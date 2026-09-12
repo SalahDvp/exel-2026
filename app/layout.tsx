@@ -20,7 +20,7 @@ const libre = Libre_Baskerville({
 
 export const metadata: Metadata = {
   title: 'Colitrack — Exel Expo 2026',
-  description: 'Smart SMS Solutions & AI Automation for E-commerce. Built for Algeria. Live at Exel Expo 2026.',
+  description: 'Smart SMS Solutions for E-commerce. Real-time parcel tracking, built for Algeria. Live at Exel Expo 2026.',
   generator: 'Colitrack.io',
 }
 

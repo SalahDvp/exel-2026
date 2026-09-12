@@ -109,9 +109,6 @@ export default function ExhibitionScreen() {
     >
       {/* Ambient background */}
       <BackgroundFX />
-      <FloatingMessages />
-      <MovingDeliveryIcons />
-      <FlowingDataLines />
       <AnimatedParticles />
 
       {/* Top bar — brand + expo badge */}
@@ -130,22 +127,20 @@ export default function ExhibitionScreen() {
       </div>
 
       {/* Progress rail */}
-      <div className="absolute bottom-10 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5">
+      <div className="absolute bottom-11 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2">
         {sections.map((_, index) => (
           <div
             key={index}
-            className={`h-2 rounded-full transition-all duration-700 ${
-              index === currentSection
-                ? "w-14 bg-[#6366f1] shadow-[0_0_18px_rgba(99,102,241,0.75)]"
-                : "w-2 bg-ink/15"
+            className={`h-[3px] rounded-full transition-all duration-700 ${
+              index === currentSection ? "w-9 bg-accent-ink" : "w-[14px] bg-ink/15"
             }`}
           />
         ))}
       </div>
 
       {/* Footer web address */}
-      <div className="absolute bottom-9 right-12 z-50 hidden items-center gap-2 text-lg font-semibold tracking-wide text-ink/50 lg:flex">
-        <Globe className="h-5 w-5 text-accent-ink" />
+      <div className="absolute bottom-10 right-14 z-50 hidden items-center gap-2 text-base font-medium tracking-[0.02em] text-ink/45 lg:flex">
+        <Globe className="h-4 w-4 text-accent-ink" />
         colitrack.io
       </div>
     </div>
@@ -216,103 +211,48 @@ function BackgroundFX() {
             "radial-gradient(1200px 700px at 78% -10%, var(--glow-1), transparent 60%), radial-gradient(1000px 600px at 8% 110%, var(--glow-2), transparent 60%)",
         }}
       />
-      {/* Subtle moving grid */}
-      <div className="absolute inset-0 overflow-hidden opacity-[0.6]">
+      {/* Whisper-fine static grid */}
+      <div className="absolute inset-0 overflow-hidden opacity-[0.5]">
         <div
-          className="animate-grid-move absolute inset-[-60px]"
+          className="absolute inset-[-60px]"
           style={{
             backgroundImage:
               "linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px)",
-            backgroundSize: "60px 60px",
+            backgroundSize: "72px 72px",
           }}
         />
       </div>
-      {/* Soft indigo glows */}
+      {/* One slow, soft glow for depth */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="animate-pulse-glow absolute left-1/4 top-1/4 h-[600px] w-[600px] rounded-full bg-[#6366f1]/20 blur-[160px]" />
+        <div className="animate-pulse-glow absolute right-[12%] top-[6%] h-[680px] w-[680px] rounded-full bg-[#6366f1]/10 blur-[180px]" />
         <div
-          className="animate-pulse-glow absolute bottom-1/4 right-1/4 h-[720px] w-[720px] rounded-full bg-[#6366f1]/15 blur-[170px]"
-          style={{ animationDelay: "3s" }}
+          className="animate-pulse-glow absolute -bottom-40 left-[6%] h-[620px] w-[620px] rounded-full bg-[#6366f1]/[0.07] blur-[190px]"
+          style={{ animationDelay: "4s" }}
         />
       </div>
       {/* Vignette for legibility (fades out in bright mode) */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[var(--vignette)] to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--vignette)] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-[var(--vignette)] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[var(--vignette)] to-transparent" />
     </>
   )
 }
 
-function FloatingMessages() {
-  const messages = [
-    { text: "📦 Colis confirmé", delay: 0 },
-    { text: "🚚 En livraison", delay: 3.5 },
-    { text: "✓ Livré — SMS envoyé", delay: 7 },
-    { text: "🎯 Client relancé", delay: 10.5 },
-  ]
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {messages.map((msg, i) => (
-        <div
-          key={i}
-          className="animate-float-message glass absolute rounded-full px-6 py-3 text-lg font-semibold text-accent-ink neon-border"
-          style={{ left: `${16 + i * 20}%`, animationDelay: `${msg.delay}s` }}
-        >
-          {msg.text}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function MovingDeliveryIcons() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="animate-delivery-move absolute top-[26%]" style={{ animationDelay: "0s" }}>
-        <div className="glass rounded-full p-4 neon-border">
-          <Truck className="h-11 w-11 text-accent-ink" />
-        </div>
-      </div>
-      <div className="animate-delivery-move absolute top-[64%]" style={{ animationDelay: "10s" }}>
-        <div className="glass rounded-full p-4 neon-border">
-          <Package className="h-11 w-11 text-accent-ink" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function FlowingDataLines() {
-  return (
-    <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-30" style={{ zIndex: 1 }}>
-      <defs>
-        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0" />
-          <stop offset="50%" stopColor="#6366f1" stopOpacity="1" />
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d="M 0 320 Q 500 220 1000 320 T 2000 320" stroke="url(#lineGradient)" strokeWidth="2" fill="none" className="animate-data-flow" />
-      <path d="M 0 560 Q 500 460 1000 560 T 2000 560" stroke="url(#lineGradient)" strokeWidth="2" fill="none" className="animate-data-flow" style={{ animationDelay: "2.5s" }} />
-    </svg>
-  )
-}
-
 function AnimatedParticles() {
-  const particles = Array.from({ length: 14 }, (_, i) => ({
+  const particles = Array.from({ length: 7 }, (_, i) => ({
     id: i,
-    x: (i * 37) % 100,
-    y: (i * 53) % 100,
-    tx: ((i % 5) - 2) * 90,
-    ty: ((i % 4) - 2) * 90,
-    delay: (i * 0.7) % 9,
-    duration: 18 + (i % 6) * 2.5,
+    x: (i * 47 + 8) % 100,
+    y: (i * 61 + 12) % 100,
+    tx: ((i % 5) - 2) * 70,
+    ty: ((i % 4) - 2) * 70,
+    delay: (i * 1.1) % 10,
+    duration: 24 + (i % 6) * 3,
   }))
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {particles.map((p) => (
         <div
           key={p.id}
-          className="animate-particle-float absolute h-1.5 w-1.5 rounded-full bg-accent-ink"
+          className="animate-particle-float absolute h-1 w-1 rounded-full bg-accent-ink/40"
           style={{
             left: `${p.x}%`,
             top: `${p.y}%`,
@@ -333,9 +273,12 @@ function AnimatedParticles() {
 /* ================================================================== */
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-[#6366f1]/40 bg-[#6366f1]/10 px-6 py-2.5 backdrop-blur-md">
-      <span className="h-2 w-2 rounded-full bg-[#6366f1] shadow-[0_0_10px_2px_rgba(99,102,241,0.8)]" />
-      <span className="text-lg font-bold uppercase tracking-[0.28em] text-accent-ink">{children}</span>
+    <div className="inline-flex items-center gap-4">
+      <span className="h-px w-10 bg-accent-ink/40" />
+      <span className="text-sm font-semibold uppercase tracking-[0.34em] text-accent-ink lg:text-base">
+        {children}
+      </span>
+      <span className="h-px w-10 bg-accent-ink/40" />
     </div>
   )
 }
@@ -362,37 +305,28 @@ function useCountUp(target: number, duration = 1700) {
 /* ================================================================== */
 function IntroSection() {
   return (
-    <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-10 text-center">
-      <div className="relative inline-block">
-        <div className="absolute inset-0 animate-pulse-ring rounded-full bg-[#6366f1]/25" />
-        <div className="absolute inset-0 animate-pulse-ring rounded-full bg-[#6366f1]/25" style={{ animationDelay: "1.3s" }} />
-        <Logo size="xl" />
-      </div>
+    <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-11 text-center">
+      <Logo size="xl" />
 
-      <h1 className="max-w-5xl text-balance text-6xl font-extrabold leading-[1.05] text-ink lg:text-7xl xl:text-[5.5rem]">
-        Transform your e-commerce with{" "}
-        <span className="text-gradient accent-serif">Smart SMS</span> &{" "}
-        <span className="text-gradient accent-serif">AI Automation</span>
-      </h1>
+      <div className="space-y-8">
+        <h1 className="max-w-5xl text-balance text-6xl font-bold leading-[1.06] tracking-[-0.02em] text-ink lg:text-7xl xl:text-[5.25rem]">
+          Transform your e-commerce with{" "}
+          <span className="text-gradient accent-serif font-normal">Smart SMS Solutions</span>
+        </h1>
 
-      <p className="max-w-3xl text-balance text-3xl font-light text-ink/70 lg:text-4xl">
-        Real-time notifications, happier customers, and fully automated parcel tracking.
-      </p>
-
-      <div className="glass-strong inline-flex items-center gap-4 rounded-full px-10 py-5 neon-border animate-neon-pulse">
-        <MapPin className="h-8 w-8 text-accent-ink" />
-        <p className="text-2xl font-bold text-ink lg:text-3xl">
-          Real-time tracking · SMS on every step · Built for Algeria 🇩🇿
+        <p className="mx-auto max-w-3xl text-balance text-3xl font-light leading-snug text-ink/60 lg:text-[2.1rem]">
+          Real-time notifications, happier customers, and fully automated parcel tracking.
         </p>
       </div>
 
-      <div className="mt-2 flex justify-center gap-10">
-        {[Zap, Sparkles, Target].map((Icon, i) => (
-          <div className="relative" key={i}>
-            <div className="absolute inset-0 animate-pulse-glow rounded-full bg-[#6366f1]/30 blur-xl" style={{ animationDelay: `${i * 0.5}s` }} />
-            <Icon className="animate-float relative h-14 w-14 text-accent-ink" style={{ animationDelay: `${i * 0.5}s` }} />
-          </div>
-        ))}
+      <div className="mt-2 flex items-center gap-6 text-xl font-medium text-ink/55 lg:text-2xl">
+        <span className="flex items-center gap-2.5">
+          <MapPin className="h-6 w-6 text-accent-ink" /> Real-time tracking
+        </span>
+        <span className="h-1 w-1 rounded-full bg-ink/25" />
+        <span>SMS on every step</span>
+        <span className="h-1 w-1 rounded-full bg-ink/25" />
+        <span>Built for Algeria 🇩🇿</span>
       </div>
     </div>
   )
@@ -1122,27 +1056,22 @@ function SpecialOfferSection() {
 /* ================================================================== */
 function CTASection() {
   return (
-    <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-10 text-center">
+    <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-11 text-center">
       <Logo size="xl" />
-      <h2 className="text-balance text-7xl font-extrabold leading-[1.05] text-ink lg:text-8xl">
-        Ready to <span className="text-gradient accent-serif">transform</span> your store?
+      <h2 className="text-balance text-7xl font-bold leading-[1.06] tracking-[-0.02em] text-ink lg:text-8xl">
+        Ready to <span className="text-gradient accent-serif font-normal">transform</span> your store?
       </h2>
-      <p className="max-w-3xl text-balance text-3xl font-light text-ink/70">
+      <p className="max-w-3xl text-balance text-3xl font-light text-ink/60">
         Join thousands of businesses automating their SMS &amp; order tracking with Colitrack.
       </p>
-      <div className="glass-strong inline-flex items-center gap-5 rounded-full px-16 py-8 neon-border animate-neon-pulse hover-glow">
-        <Globe className="h-12 w-12 text-accent-ink" />
-        <p className="text-6xl font-extrabold text-gradient">colitrack.io</p>
+      <div className="glass-strong inline-flex items-center gap-5 rounded-full px-16 py-7 neon-border">
+        <Globe className="h-11 w-11 text-accent-ink" />
+        <p className="text-6xl font-bold tracking-tight text-gradient">colitrack.io</p>
       </div>
-      <div className="flex items-center gap-4 text-2xl font-semibold text-ink/60">
-        <span className="flex items-center gap-2"><Play className="h-6 w-6 fill-accent-ink text-accent-ink" /> Try the live demo</span>
-        <span className="text-ink/20">·</span>
+      <div className="flex items-center gap-5 text-xl font-medium text-ink/55 lg:text-2xl">
+        <span className="flex items-center gap-2.5"><Play className="h-5 w-5 fill-accent-ink text-accent-ink" /> Try the live demo</span>
+        <span className="h-1 w-1 rounded-full bg-ink/25" />
         <span>Built for Algeria 🇩🇿</span>
-      </div>
-      <div className="flex justify-center gap-10">
-        {[Sparkles, Zap, Sparkles].map((Icon, i) => (
-          <Icon key={i} className="animate-float h-16 w-16 text-accent-ink" style={{ animationDelay: `${i * 0.5}s` }} />
-        ))}
       </div>
     </div>
   )
