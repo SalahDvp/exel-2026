@@ -30,6 +30,10 @@ import {
   Wifi,
   BatteryFull,
   SignalHigh,
+  Volume2,
+  VolumeX,
+  Sun,
+  Moon,
 } from "lucide-react"
 
 /* ------------------------------------------------------------------ */
@@ -143,6 +147,23 @@ export default function ExhibitionScreen() {
         <Globe className="h-4 w-4 text-accent-ink" />
         colitrack.io
       </div>
+
+      {/* Clickable bright / dark toggle */}
+      <button
+        onClick={() => {
+          setTheme((t) => (t === "dark" ? "light" : "dark"))
+          setThemeLocked(true)
+        }}
+        aria-label="Toggle bright or dark mode"
+        title="Toggle bright / dark"
+        className="glass hover-glow absolute bottom-9 left-12 z-50 flex h-14 w-14 items-center justify-center rounded-full"
+      >
+        {theme === "dark" ? (
+          <Sun className="h-6 w-6 text-accent-ink" />
+        ) : (
+          <Moon className="h-6 w-6 text-accent-ink" />
+        )}
+      </button>
     </div>
   )
 }
@@ -187,12 +208,20 @@ function Logo({ size = "md" }: { size?: "md" | "xl" }) {
 
 function ExpoBadge() {
   return (
-    <div className="glass-strong flex items-center gap-4 rounded-2xl px-6 py-3.5 neon-border animate-neon-pulse">
-      <div className="flex flex-col items-end leading-tight">
-        <span className="text-xs font-semibold uppercase tracking-[0.25em] text-accent-ink">Live at</span>
-        <span className="text-2xl font-extrabold text-ink">Exel Expo 2026</span>
+    <div className="glass-strong flex items-center gap-4 rounded-2xl px-6 py-4 neon-border">
+      <div className="flex flex-col items-end gap-1 leading-none">
+        <span className="text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-accent-ink">
+          Exhibiting at
+        </span>
+        <span className="h-px w-full bg-ink/10" />
       </div>
-      <span className="text-3xl" role="img" aria-label="Algeria">🇩🇿</span>
+      {/* Official ECSEL EXPO 2026 logo (5th edition) */}
+      <img
+        src="/ecsel-expo-logo.png"
+        alt="ECSEL EXPO — Algiers 2026, 5th edition"
+        className="h-11 w-auto lg:h-12"
+        style={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.35))" }}
+      />
     </div>
   )
 }
@@ -375,23 +404,37 @@ function AboutSection() {
 /* ================================================================== */
 function VideoSection() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [muted, setMuted] = useState(true)
 
-  // Muted-autoplay nudge for kiosk browsers.
+  const post = (func: string, args: any[] = []) =>
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func, args }),
+      "*",
+    )
+
+  // Muted-autoplay nudge for kiosk browsers (mute keeps autoplay allowed).
   const nudgePlay = () => {
-    const win = iframeRef.current?.contentWindow
-    if (!win) return
-    const send = (func: string) =>
-      win.postMessage(JSON.stringify({ event: "command", func, args: [] }), "*")
     let n = 0
     const id = setInterval(() => {
-      send("mute")
-      send("playVideo")
+      post("mute")
+      post("playVideo")
       if (++n >= 6) clearInterval(id)
     }, 700)
   }
 
+  const toggleSound = () => {
+    if (muted) {
+      post("unMute")
+      post("setVolume", [100])
+      post("playVideo")
+    } else {
+      post("mute")
+    }
+    setMuted((m) => !m)
+  }
+
   return (
-    <div className="animate-fade-in-up grid w-full max-w-7xl items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">
+    <div className="animate-fade-in-up grid w-full max-w-7xl items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
       <div className="space-y-8">
         <Eyebrow>Watch it work</Eyebrow>
         <h2 className="text-balance text-6xl font-extrabold leading-[1.05] text-ink lg:text-7xl">
@@ -412,11 +455,18 @@ function VideoSection() {
             </div>
           ))}
         </div>
+        <button
+          onClick={toggleSound}
+          className="glass hover-glow inline-flex items-center gap-3 rounded-full px-6 py-3 text-xl font-semibold text-ink"
+        >
+          {muted ? <VolumeX className="h-6 w-6 text-accent-ink" /> : <Volume2 className="h-6 w-6 text-accent-ink" />}
+          {muted ? "Tap for sound" : "Sound on"}
+        </button>
       </div>
 
       {/* Phone mockup showing the demo inside the Colitrack app */}
       <div className="flex justify-center">
-        <PhoneMockup iframeRef={iframeRef} onVideoLoad={nudgePlay} />
+        <PhoneMockup iframeRef={iframeRef} onVideoLoad={nudgePlay} muted={muted} onToggleSound={toggleSound} />
       </div>
     </div>
   )
@@ -425,14 +475,18 @@ function VideoSection() {
 function PhoneMockup({
   iframeRef,
   onVideoLoad,
+  muted,
+  onToggleSound,
 }: {
   iframeRef: React.RefObject<HTMLIFrameElement>
   onVideoLoad: () => void
+  muted: boolean
+  onToggleSound: () => void
 }) {
   return (
-    <div className="relative" style={{ width: 356 }}>
+    <div className="relative" style={{ width: 384 }}>
       {/* Glow */}
-      <div className="animate-pulse-glow absolute -inset-8 rounded-[70px] bg-[#6366f1]/25 blur-3xl" />
+      <div className="animate-pulse-glow absolute -inset-8 rounded-[70px] bg-[#6366f1]/20 blur-3xl" />
 
       {/* Side buttons */}
       <div className="absolute -left-1 top-40 h-16 w-1 rounded-l bg-[#2a2f42]" />
@@ -441,11 +495,11 @@ function PhoneMockup({
 
       {/* Device body */}
       <div
-        className="relative rounded-[52px] p-[14px] shadow-[0_40px_90px_-30px_rgba(20,24,60,0.85)]"
+        className="relative rounded-[54px] p-[14px] shadow-[0_46px_100px_-34px_rgba(10,12,30,0.9)]"
         style={{ background: "linear-gradient(160deg,#232838,#0c0e16)", border: "1px solid rgba(255,255,255,0.10)" }}
       >
         {/* Screen */}
-        <div className="relative overflow-hidden rounded-[40px] bg-[#0a0d16]" style={{ aspectRatio: "9 / 18.2" }}>
+        <div className="relative overflow-hidden rounded-[42px] bg-[#0a0d16]" style={{ aspectRatio: "9 / 17.4" }}>
           {/* Dynamic island */}
           <div className="absolute left-1/2 top-3 z-30 h-8 w-28 -translate-x-1/2 rounded-full bg-black" />
 
@@ -470,19 +524,29 @@ function PhoneMockup({
               </div>
               <span className="text-base font-extrabold text-white">Colitrack</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full bg-emerald-400/15 px-2.5 py-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" style={{ animation: "live-ping 2s infinite" }} />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">Live</span>
+            <div className="flex items-center gap-2">
+              {/* Sound toggle (browsers block autoplay WITH sound → tap to enable) */}
+              <button
+                onClick={onToggleSound}
+                aria-label={muted ? "Unmute video" : "Mute video"}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white"
+              >
+                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+              <div className="flex items-center gap-1.5 rounded-full bg-emerald-400/15 px-2.5 py-1">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" style={{ animation: "live-ping 2s infinite" }} />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">Live</span>
+              </div>
             </div>
           </div>
 
-          {/* The demo video (16:9 fits the phone width) */}
+          {/* The demo video — the hero of the screen (16:9, full width) */}
           <div className="relative aspect-video w-full overflow-hidden bg-black">
             <iframe
               ref={iframeRef}
               onLoad={onVideoLoad}
               className="absolute inset-0 h-full w-full"
-              src="https://www.youtube.com/embed/82vgT6ypObw?autoplay=1&mute=1&loop=1&playlist=82vgT6ypObw&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1"
+              src="https://www.youtube.com/embed/82vgT6ypObw?autoplay=1&mute=1&loop=1&playlist=82vgT6ypObw&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&fs=0"
               title="Colitrack in action"
               allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
               allowFullScreen
@@ -490,40 +554,40 @@ function PhoneMockup({
           </div>
 
           {/* Live SMS / tracking feed */}
-          <div className="space-y-3 px-4 py-4">
-            <p className="px-1 text-xs font-bold uppercase tracking-widest text-white/40">Live activity</p>
+          <div className="space-y-2.5 px-4 py-3.5">
+            <p className="px-1 text-[11px] font-bold uppercase tracking-widest text-white/40">Live activity</p>
 
-            <div className="flex items-start gap-3 rounded-2xl bg-white/[0.05] p-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#6366f1]/20">
-                <Truck className="h-5 w-5 text-[#a5b4fc]" />
+            <div className="flex items-start gap-3 rounded-2xl bg-white/[0.05] p-2.5">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#6366f1]/20">
+                <Truck className="h-4 w-4 text-[#a5b4fc]" />
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold leading-snug text-white">
+                <p className="text-[12.5px] font-semibold leading-snug text-white">
                   Parcel CT-90412 is out for delivery 🚚
                 </p>
-                <p className="mt-0.5 text-[11px] text-white/45">Alger · SMS sent to customer · 14:02</p>
+                <p className="mt-0.5 text-[10.5px] text-white/45">Alger · SMS sent · 14:02</p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 rounded-2xl bg-white/[0.05] p-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
-                <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+            <div className="flex items-start gap-3 rounded-2xl bg-white/[0.05] p-2.5">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
+                <CheckCircle2 className="h-4 w-4 text-emerald-300" />
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold leading-snug text-white">Order delivered ✓ — confirmation sent</p>
-                <p className="mt-0.5 text-[11px] text-white/45">Oran · Return risk avoided · 13:47</p>
+                <p className="text-[12.5px] font-semibold leading-snug text-white">Delivered ✓ — confirmation sent</p>
+                <p className="mt-0.5 text-[10.5px] text-white/45">Oran · Return avoided · 13:47</p>
               </div>
             </div>
 
-            <div className="rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#4f46e5] p-3">
-              <p className="text-[13px] font-semibold leading-snug text-white">
-                🎯 Retargeting re-engaged 214 no-answer customers
+            <div className="rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#4f46e5] p-2.5">
+              <p className="text-[12.5px] font-semibold leading-snug text-white">
+                🎯 Retargeting re-engaged 214 customers
               </p>
             </div>
           </div>
 
           {/* Home indicator */}
-          <div className="absolute bottom-2.5 left-1/2 h-1.5 w-32 -translate-x-1/2 rounded-full bg-white/40" />
+          <div className="absolute bottom-2 left-1/2 h-1.5 w-32 -translate-x-1/2 rounded-full bg-white/40" />
         </div>
       </div>
     </div>
@@ -1036,7 +1100,7 @@ function SpecialOfferSection() {
             </div>
           </div>
           <div className="flex justify-center">
-            <Eyebrow>Exel Expo 2026 exclusive</Eyebrow>
+            <Eyebrow>ECSEL EXPO 2026 · 5th edition</Eyebrow>
           </div>
           <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
             Get <span className="text-gradient accent-serif">1200 DA free</span> today.
