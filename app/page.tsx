@@ -25,6 +25,7 @@ import {
   Plug,
   ShieldCheck,
   Wallet,
+  PackageCheck,
   Globe,
   Play,
   Wifi,
@@ -55,24 +56,36 @@ const sections: { id: string; component: () => JSX.Element; duration: number }[]
   { id: "cta", component: CTASection, duration: 10500 },
 ]
 
+// The kiosk plays the whole deck in English, then the whole deck in Arabic,
+// then loops. We model both passes as one "step" counter: steps 0..N-1 are the
+// English pass, steps N..2N-1 the Arabic pass. Slide on screen = step % N; the
+// language is simply which half of the run we're in.
+const TOTAL_STEPS = sections.length * 2
+
 export default function ExhibitionScreen() {
-  const [currentSection, setCurrentSection] = useState(0)
-  const [displayedSection, setDisplayedSection] = useState(0)
+  const [currentStep, setCurrentStep] = useState(0)
+  const [displayedStep, setDisplayedStep] = useState(0)
   const [stageVisible, setStageVisible] = useState(true)
   const [autoplay, setAutoplay] = useState(true)
   const [theme, setTheme] = useState<"dark" | "light">("dark")
   const [themeLocked, setThemeLocked] = useState(false)
-  const [lang, setLang] = useState<Lang>("en")
 
-  // Optional kiosk config: ?s=<index> opens a slide, ?auto=0 holds it,
-  // ?theme=light|dark locks a theme.
+  // Everything else is derived from the step: the slide index wraps every N,
+  // and the language is English for the first pass, Arabic for the second.
+  const currentSection = currentStep % sections.length
+  const displayedSection = displayedStep % sections.length
+  const lang: Lang = displayedStep < sections.length ? "en" : "ar"
+
+  // Optional kiosk config: ?s=<index> opens a step (0..N-1 = English slides,
+  // N..2N-1 = the same slides in Arabic), ?auto=0 holds it, ?theme=light|dark
+  // locks a theme.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const s = parseInt(params.get("s") || "", 10)
     if (!Number.isNaN(s)) {
-      const idx = ((s % sections.length) + sections.length) % sections.length
-      setCurrentSection(idx)
-      setDisplayedSection(idx) // a deep-link jumps straight in, no crossfade
+      const idx = ((s % TOTAL_STEPS) + TOTAL_STEPS) % TOTAL_STEPS
+      setCurrentStep(idx)
+      setDisplayedStep(idx) // a deep-link jumps straight in, no crossfade
     }
     if (params.get("auto") === "0") setAutoplay(false)
     const t = params.get("theme")
@@ -85,9 +98,9 @@ export default function ExhibitionScreen() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") {
-        setCurrentSection((prev) => (prev - 1 + sections.length) % sections.length)
+        setCurrentStep((prev) => (prev - 1 + TOTAL_STEPS) % TOTAL_STEPS)
       } else if (e.key === "ArrowRight") {
-        setCurrentSection((prev) => (prev + 1) % sections.length)
+        setCurrentStep((prev) => (prev + 1) % TOTAL_STEPS)
       } else if (e.key === " ") {
         setAutoplay((p) => !p)
       } else if (e.key.toLowerCase() === "t") {
@@ -100,21 +113,24 @@ export default function ExhibitionScreen() {
   }, [])
 
   // Stable refs so goNext keeps a single identity (keeps timers from resetting).
-  const currentSectionRef = useRef(currentSection)
+  const currentStepRef = useRef(currentStep)
   const themeLockedRef = useRef(themeLocked)
   useEffect(() => {
-    currentSectionRef.current = currentSection
-  }, [currentSection])
+    currentStepRef.current = currentStep
+  }, [currentStep])
   useEffect(() => {
     themeLockedRef.current = themeLocked
   }, [themeLocked])
 
-  // Advance to the next slide (wraps around, alternates theme each full loop).
+  // Advance one step (wraps around at the end of the Arabic pass).
   const goNext = useCallback(() => {
-    const next = (currentSectionRef.current + 1) % sections.length
-    // Alternate dark / bright each full loop unless the user locked a theme.
-    if (next === 0 && !themeLockedRef.current) setTheme((x) => (x === "dark" ? "light" : "dark"))
-    setCurrentSection(next)
+    const next = (currentStepRef.current + 1) % TOTAL_STEPS
+    // Alternate dark / bright once per full English+Arabic cycle (so the theme
+    // isn't tied to the language) unless the user locked a theme.
+    if (next === 0 && !themeLockedRef.current) {
+      setTheme((x) => (x === "dark" ? "light" : "dark"))
+    }
+    setCurrentStep(next)
   }, [])
 
   // The video slide reports when its reel has finished playing. Advance only
@@ -128,38 +144,31 @@ export default function ExhibitionScreen() {
     if (autoplayRef.current) goNext()
   }, [goNext])
 
-  // Smooth crossfade: hold the outgoing slide, fade it out, swap the content
-  // while it's hidden, then fade the new one in. `displayedSection` is what's on
-  // screen; `currentSection` is where we're heading.
+  // Smooth crossfade: hold the outgoing step, fade it out, swap the content
+  // while it's hidden, then fade the new one in. Because the language is derived
+  // from the step, the English→Arabic switch at the pass boundary also happens
+  // here, hidden, so a slide never flashes the wrong language. `displayedStep`
+  // is what's on screen; `currentStep` is where we're heading.
   useEffect(() => {
-    if (currentSection === displayedSection) return
+    if (currentStep === displayedStep) return
     setStageVisible(false)
     const t = setTimeout(() => {
-      setDisplayedSection(currentSection)
+      setDisplayedStep(currentStep)
       setStageVisible(true)
     }, 420)
     return () => clearTimeout(t)
-  }, [currentSection, displayedSection])
+  }, [currentStep, displayedStep])
 
-  // Run the auto-play timer off the slide that's actually on screen.
+  // Run the auto-play timer off the step that's actually on screen.
   useEffect(() => {
     if (!autoplay) return
     // The video slide isn't on a fixed timer — it advances when the reel ends
     // (handled inside VideoSection) so the whole clip always plays to the end.
-    if (sections[displayedSection].id === "video") return
-    const timeout = setTimeout(goNext, sections[displayedSection].duration)
+    const section = sections[displayedStep % sections.length]
+    if (section.id === "video") return
+    const timeout = setTimeout(goNext, section.duration)
     return () => clearTimeout(timeout)
-  }, [displayedSection, autoplay, goNext])
-
-  // Each slide reads in English long enough to take in the whole screen, then a
-  // cursor wipes it and types the Arabic. English holds for ~58% of the slide.
-  useEffect(() => {
-    setLang("en")
-    const duration = sections[displayedSection].duration
-    const hold = Math.min(Math.max(duration * 0.58, 5500), duration - 4500)
-    const t = setTimeout(() => setLang("ar"), hold)
-    return () => clearTimeout(t)
-  }, [displayedSection])
+  }, [displayedStep, autoplay, goNext])
 
   const CurrentComponent = sections[displayedSection].component
 
@@ -188,11 +197,23 @@ export default function ExhibitionScreen() {
         dir={lang === "ar" ? "rtl" : "ltr"}
         className="relative z-10 flex min-h-screen items-center justify-center px-10 lg:px-20"
       >
-        <LangContext.Provider value={lang}>
-          <AdvanceContext.Provider value={advanceFromReel}>
-            <CurrentComponent key={currentSection} />
-          </AdvanceContext.Provider>
-        </LangContext.Provider>
+        <div
+          className="w-full"
+          style={{
+            opacity: stageVisible ? 1 : 0,
+            transform: stageVisible ? "translateY(0) scale(1)" : "translateY(16px) scale(0.985)",
+            transition: "opacity 420ms cubic-bezier(0.4, 0, 0.2, 1), transform 420ms cubic-bezier(0.4, 0, 0.2, 1)",
+            willChange: "opacity, transform",
+          }}
+        >
+          <LangContext.Provider value={lang}>
+            <AdvanceContext.Provider value={advanceFromReel}>
+              <FitStage key={displayedStep}>
+                <CurrentComponent />
+              </FitStage>
+            </AdvanceContext.Provider>
+          </LangContext.Provider>
+        </div>
       </div>
 
       {/* Progress rail */}
@@ -401,44 +422,76 @@ function useCountUp(target: number, duration = 1700) {
 const AdvanceContext = createContext<() => void>(() => {})
 const useAdvance = () => useContext(AdvanceContext)
 
-/* Shrinks a tall slide just enough to sit between the header and the progress
-   rail on any screen height, so content-dense slides never overflow. Slides
-   that already fit stay at 1×. Scaling is visual only (layout stays centered). */
-function FitToViewport({ reserve = 280, children }: { reserve?: number; children: React.ReactNode }) {
+/* Scales every slide to fill the same share of the screen, so each one sits in
+   the same band between the header and the progress rail — no more one slide at
+   80% and the next at 55%. Over-tall slides scale down to fit; sparse ones scale
+   up a little (capped), never past the available width, so nothing spills off
+   the edges. Scaling is visual only; layout stays centered. */
+function FitStage({
+  reserveV = 300,
+  reserveH = 180,
+  maxUp = 1.3,
+  children,
+}: {
+  reserveV?: number
+  reserveH?: number
+  maxUp?: number
+  children: React.ReactNode
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
   useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
+    const host = ref.current
+    if (!host) return
     const measure = () => {
-      const natural = el.offsetHeight
-      const avail = window.innerHeight - reserve
-      setScale(natural > avail ? Math.max(avail / natural, 0.5) : 1)
+      const content = host.firstElementChild as HTMLElement | null
+      if (!content) return
+      const nH = content.offsetHeight
+      const nW = content.offsetWidth
+      if (!nH || !nW) return
+      const availH = window.innerHeight - reserveV
+      const availW = window.innerWidth - reserveH
+      // Fill toward the available box on whichever axis binds first, capped so a
+      // sparse slide never balloons, floored so it can't disappear.
+      const s = Math.min(availH / nH, availW / nW, maxUp)
+      setScale(Math.max(s, 0.5))
     }
     measure()
+    // Re-measure over the next couple of frames in case fonts, layout, or a
+    // late viewport change haven't settled by first paint.
+    let raf = requestAnimationFrame(() => {
+      measure()
+      raf = requestAnimationFrame(measure)
+    })
+    const content = host.firstElementChild
     const ro = new ResizeObserver(measure)
-    ro.observe(el)
+    if (content) ro.observe(content)
     window.addEventListener("resize", measure)
     return () => {
+      cancelAnimationFrame(raf)
       ro.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [reserve])
+  }, [reserveV, reserveH, maxUp])
   return (
     <div
+      ref={ref}
       className="flex w-full justify-center"
-      style={{ transform: `scale(${scale})`, transformOrigin: "center center", transition: "transform 0.35s ease" }}
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "center center",
+        transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
     >
-      <div ref={ref} className="w-full">
-        {children}
-      </div>
+      {children}
     </div>
   )
 }
 
 /* ================================================================== */
-/*  BILINGUAL ENGINE — every screen reads in English, a cursor wipes   */
-/*  it, then types the Arabic in its place.                            */
+/*  BILINGUAL ENGINE — the deck plays through once in English, then     */
+/*  again in Arabic. Every screen simply renders the current pass's      */
+/*  language (RTL is handled by the stage `dir`).                        */
 /* ================================================================== */
 type Lang = "en" | "ar"
 const LangContext = createContext<Lang>("en")
@@ -459,8 +512,8 @@ function renderHeadline(full: string, accent: string | undefined, accentClassNam
   )
 }
 
-/* Headline that backspaces the English with a blinking cursor and types
-   the Arabic in its place the moment the language flips. */
+/* Headline for the active pass — English on the first run, Arabic on the
+   second — with its accent phrase kept in the indigo gradient. */
 function Typewriter({
   en,
   ar,
@@ -475,49 +528,6 @@ function Typewriter({
   accentClassName?: string
 }) {
   const lang = useLang()
-  const [display, setDisplay] = useState(en)
-  const [animating, setAnimating] = useState(false)
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
-
-  useEffect(() => {
-    const clearAll = () => {
-      timers.current.forEach(clearTimeout)
-      timers.current = []
-    }
-    if (lang === "en") {
-      clearAll()
-      setAnimating(false)
-      setDisplay(en)
-      return
-    }
-    // lang === "ar": delete English char-by-char, pause, then type Arabic
-    clearAll()
-    setAnimating(true)
-    const at = (fn: () => void, d: number) => timers.current.push(setTimeout(fn, d))
-    let t = 0
-    for (let i = en.length - 1; i >= 0; i--) {
-      const slice = en.slice(0, i)
-      t += 24
-      at(() => setDisplay(slice), t)
-    }
-    t += 220 // a beat with the bare cursor
-    for (let i = 1; i <= ar.length; i++) {
-      const slice = ar.slice(0, i)
-      t += 52
-      at(() => setDisplay(slice), t)
-    }
-    at(() => setAnimating(false), t + 40)
-    return clearAll
-  }, [lang, en, ar])
-
-  if (animating) {
-    return (
-      <>
-        <span dir={lang === "ar" ? "rtl" : "ltr"}>{display}</span>
-        <span className="type-caret" aria-hidden="true" />
-      </>
-    )
-  }
   return lang === "ar"
     ? renderHeadline(ar, accentAr, accentClassName)
     : renderHeadline(en, accentEn, accentClassName)
@@ -755,7 +765,7 @@ function VideoSection() {
         <h2 className="text-balance text-6xl font-extrabold leading-[1.05] text-ink lg:text-7xl">
           <Typewriter
             en="See Colitrack in action."
-            ar="شاهد Colitrack أثناء العمل."
+            ar="شاهد كولي تراك أثناء العمل."
             accentEn="in action."
             accentAr="أثناء العمل."
           />
@@ -923,7 +933,7 @@ function HowItWorksSection() {
       title: { en: "We handle everything", ar: "نتكفّل بكل شيء" },
       body: {
         en: "Colitrack sends the right SMS at the right moment, in real time. You just watch it work.",
-        ar: "يرسل Colitrack الرسالة المناسبة في الوقت المناسب، فوريًا. ما عليك سوى المشاهدة.",
+        ar: "يرسل كولي تراك الرسالة المناسبة في الوقت المناسب، فوريًا. ما عليك سوى المشاهدة.",
       },
     },
   ]
@@ -994,8 +1004,7 @@ function DashboardSection() {
     { name: { en: "Sétif", ar: "سطيف" }, n: 1340, pct: 43 },
   ]
   return (
-    <FitToViewport>
-      <div className="animate-fade-in-up mx-auto w-full max-w-[1500px] space-y-5">
+    <div className="animate-fade-in-up mx-auto w-full max-w-[1500px] space-y-5">
       <div className="flex flex-col items-center gap-3 text-center">
         <Eyebrow>
           <T en="Peek inside — it's live" ar="ألقِ نظرة — إنها مباشرة" />
@@ -1126,8 +1135,7 @@ function DashboardSection() {
           </span>
         </div>
       </div>
-      </div>
-    </FitToViewport>
+    </div>
   )
 }
 
@@ -1154,7 +1162,7 @@ function KeyNumbersSection() {
         <p className="text-2xl text-ink/55">
           <T
             en="Created by online sellers, for online sellers."
-            ar="صُنعت من بائعين على الإنترنت، لبائعين على الإنترنت."
+            ar="صُنعت من بائعين على الإنترنت، تجار الكترونيين."
           />
         </p>
       </div>
@@ -1456,87 +1464,94 @@ function PartnersSection() {
 }
 
 /* ================================================================== */
-/*  10 · PRICING                                                       */
+/*  10 · FEES — 10 DA per SMS, billed only on delivered parcels        */
 /* ================================================================== */
 function PricingSection() {
-  const P = {
-    notif: { en: "SMS Notifications", ar: "إشعارات SMS" },
-    track: { en: "Real-time Tracking Link", ar: "رابط تتبّع فوري" },
-    retarget: { en: "SMS Retargeting", ar: "إعادة استهداف عبر SMS" },
-    bonus: { en: "+5% Bonus Tokens FREE", ar: "+5% رصيد إضافي مجانًا" },
-    sender: { en: "Custom Sender ID", ar: "معرّف مُرسِل مخصّص" },
-  }
-  const plans = [
-    { name: "Starter", price: "$10.99", tokens: "2,400", popular: false, perks: [P.notif, P.track, P.retarget] },
-    { name: "Enterprise", price: "$100", tokens: "25,200", popular: true, perks: [P.bonus, P.sender, P.retarget] },
-    { name: "Business", price: "$80", tokens: "19,200", popular: false, perks: [P.notif, P.sender, P.retarget] },
+  // Counts 0 → 10 each time the slide mounts (it remounts per language pass).
+  const price = useCountUp(10, 1600)
+  const smsTypes = [
+    { icon: Bell, en: "Order confirmed", ar: "تأكيد الطلب" },
+    { icon: Truck, en: "Out for delivery", ar: "خرج للتوصيل" },
+    { icon: PackageCheck, en: "Delivered", ar: "تمّ التسليم" },
+    { icon: Target, en: "Retargeting", ar: "إعادة استهداف" },
+  ]
+  const reassure = [
+    { icon: Send, en: "Pay only for what you send", ar: "ادفع فقط لما ترسله" },
+    { icon: ShieldCheck, en: "No delivery, no charge", ar: "بدون تسليم، بدون رسوم" },
+    { icon: Wallet, en: "No monthly subscription", ar: "بدون اشتراك شهري" },
   ]
   return (
-    <div className="animate-fade-in-up w-full max-w-7xl space-y-12">
-      <div className="space-y-5 text-center">
-        <div className="flex justify-center">
-          <Eyebrow>
-            <T en="Simple pricing" ar="أسعار بسيطة" />
-          </Eyebrow>
-        </div>
-        <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          <Typewriter
-            en="Pay once. Tokens never expire."
-            ar="ادفع مرّة واحدة. رصيدك لا ينتهي أبدًا."
-            accentEn="Tokens never expire."
-            accentAr="رصيدك لا ينتهي أبدًا."
-          />
-        </h2>
-      </div>
-      <div className="grid items-center gap-7 md:grid-cols-3">
-        {plans.map((p, i) => (
-          <div
-            key={i}
-            className={`animate-fade-in-up relative flex flex-col gap-6 rounded-3xl p-9 ${
-              p.popular ? "neon-border animate-neon-pulse scale-[1.04]" : "glass-strong"
-            }`}
-            style={{
-              animationDelay: `${i * 0.12}s`,
-              background: p.popular ? "linear-gradient(165deg, rgba(99,102,241,0.22), rgba(99,102,241,0.06))" : undefined,
-            }}
-          >
-            {p.popular && (
-              <span className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#a5b4fc] px-5 py-1.5 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg">
-                <T en="Most Popular" ar="الأكثر رواجًا" />
-              </span>
-            )}
-            <div>
-              <p className="text-2xl font-bold text-ink/70">{p.name}</p>
-              <p className="mt-2 flex items-baseline gap-2">
-                <span className="text-6xl font-extrabold text-ink">{p.price}</span>
-                <span className="text-xl text-ink/45">
-                  <T en="/ one-time" ar="/ مرّة واحدة" />
-                </span>
-              </p>
-              <p className="mt-2 text-2xl font-bold text-accent-ink">
-                {p.tokens} <T en="Tokens" ar="رصيد" />
-              </p>
-            </div>
-            <div className="space-y-3">
-              {p.perks.map((perk, j) => (
-                <div key={j} className="flex items-center gap-3">
-                  <CheckCircle2 className="h-6 w-6 flex-shrink-0 text-accent-ink" />
-                  <span className="text-xl font-medium text-ink/80">
-                    <T en={perk.en} ar={perk.ar} />
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className={`mt-auto rounded-xl py-4 text-center text-xl font-extrabold ${p.popular ? "btn-pop" : "btn-solid"}`}>
-              <T en="Get Started" ar="ابدأ الآن" />
-            </div>
+    <div className="animate-fade-in-up flex w-full max-w-6xl flex-col items-center gap-9 text-center">
+      <Eyebrow>
+        <T en="Simple, honest pricing" ar="تسعير بسيط وصادق" />
+      </Eyebrow>
+
+      <h2 className="text-balance text-5xl font-extrabold text-ink lg:text-6xl">
+        <Typewriter
+          en="You only pay for delivered parcels."
+          ar="تدفع فقط عن الطرود المُسلَّمة."
+          accentEn="delivered parcels."
+          accentAr="الطرود المُسلَّمة."
+        />
+      </h2>
+
+      {/* The price medallion — the whole point of the slide */}
+      <div className="relative mt-3">
+        {/* Soft glow behind the card */}
+        <div className="animate-pulse-glow absolute -inset-6 -z-10 rounded-[3.5rem] bg-[#6366f1]/25 blur-3xl" />
+        {/* Ribbon sits above the card edge, outside the clipped sheen */}
+        <span className="absolute -top-5 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-r from-[#6366f1] to-[#a5b4fc] px-6 py-2 text-lg font-extrabold uppercase tracking-wide text-white shadow-[0_10px_28px_-10px_rgba(99,102,241,0.9)]">
+          <Sparkles className="h-4 w-4" />
+          <T en="Pay as you go" ar="الدفع حسب الاستخدام" />
+        </span>
+
+        <div className="sheen glass-strong neon-border animate-neon-pulse hover-glow rounded-[2.75rem] px-14 pb-11 pt-14 lg:px-20">
+          <p className="text-xl font-semibold uppercase tracking-[0.32em] text-accent-ink">
+            <T en="Only" ar="فقط" />
+          </p>
+          <div className="mt-1 flex items-end justify-center gap-4" dir="ltr">
+            <span className="text-gradient text-[9rem] font-extrabold leading-[0.82] lg:text-[11rem]">
+              {Math.round(price)}
+            </span>
+            <span className="mb-5 text-5xl font-extrabold text-ink lg:text-6xl">
+              <T en="DA" ar="دج" />
+            </span>
           </div>
+          {/* per SMS — the unit — charged only on delivered parcels */}
+          <p className="mt-1 text-3xl font-extrabold text-accent-ink lg:text-4xl">
+            <T en="per SMS" ar="لكل رسالة" />
+          </p>
+          <div className="mt-4 flex justify-center">
+            <span className="inline-flex items-center gap-2.5 rounded-full bg-[#6366f1]/15 px-6 py-2.5 text-2xl font-bold text-ink ring-1 ring-[#6366f1]/40">
+              <PackageCheck className="h-6 w-6 text-accent-ink" />
+              <T en="per delivered parcel" ar="لكل طرد مُسلَّم" />
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* The SMS you can automate — each one is 10 DA, only when delivered */}
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {smsTypes.map((s, i) => (
+          <span
+            key={i}
+            className="animate-fade-in-up inline-flex items-center gap-2.5 rounded-2xl border border-ink/10 bg-ink/[0.03] px-5 py-2.5 text-lg font-semibold text-ink/75"
+            style={{ animationDelay: `${0.15 + i * 0.1}s` }}
+          >
+            <s.icon className="h-5 w-5 text-accent-ink" />
+            <T en={s.en} ar={s.ar} />
+          </span>
         ))}
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-10 text-xl font-semibold text-ink/55">
-        <span className="flex items-center gap-2"><Wallet className="h-6 w-6 text-accent-ink" /> <T en="Instant token credit" ar="شحن رصيد فوري" /></span>
-        <span className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-accent-ink" /> <T en="99.9% uptime" ar="توفّر بنسبة 99.9%" /></span>
-        <span className="flex items-center gap-2"><Sparkles className="h-6 w-6 text-accent-ink" /> <T en="Tokens never expire" ar="الرصيد لا ينتهي أبدًا" /></span>
+
+      {/* Reassurance row */}
+      <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-xl font-semibold text-ink/55">
+        {reassure.map((r, i) => (
+          <span key={i} className="flex items-center gap-2">
+            <r.icon className="h-6 w-6 text-accent-ink" />
+            <T en={r.en} ar={r.ar} />
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -1550,7 +1565,7 @@ function TestimonialsSection() {
     {
       quote: {
         en: "Colitrack transformed how we handle order communications. Customer satisfaction is up 45% since we switched on SMS automation.",
-        ar: "غيّر Colitrack طريقة تعاملنا مع مراسلات الطلبات. ارتفع رضا الزبائن بنسبة 45% منذ أن فعّلنا أتمتة SMS.",
+        ar: "غيّر كولي تراك طريقة تعاملنا مع مراسلات الطلبات. ارتفع رضا الزبائن بنسبة 45% منذ أن فعّلنا أتمتة SMS.",
       },
       name: { en: "Walid", ar: "وليد" },
       role: { en: "E-commerce Manager · GRIFA SHOP", ar: "مدير التجارة الإلكترونية · GRIFA SHOP" },
@@ -1566,7 +1581,7 @@ function TestimonialsSection() {
     {
       quote: {
         en: "As a small business, Colitrack was a game-changer. Tracking links and automated SMS gave us an enterprise-level experience.",
-        ar: "كمشروع صغير، كان Colitrack نقلة نوعية. منحتنا روابط التتبّع ورسائل SMS الآلية تجربة بمستوى الشركات الكبرى.",
+        ar: "كمشروع صغير، كان كولي تراك نقلة نوعية. منحتنا روابط التتبّع ورسائل SMS الآلية تجربة بمستوى الشركات الكبرى.",
       },
       name: { en: "Ben Youcef", ar: "بن يوسف" },
       role: { en: "Founder · BRUSH MASTER", ar: "مؤسّس · BRUSH MASTER" },
@@ -1681,7 +1696,7 @@ function CTASection() {
       <p className="max-w-3xl text-balance text-3xl font-light text-ink/60">
         <T
           en="Join thousands of businesses automating their SMS & order tracking with Colitrack."
-          ar="انضمّ إلى آلاف الأنشطة التي تُؤتمت رسائلها وتتبّع طلباتها مع Colitrack."
+          ar="انضمّ إلى آلاف الأنشطة التي تُؤتمت رسائلها وتتبّع طلباتها مع كولي تراك."
         />
       </p>
       <div className="glass-strong inline-flex items-center gap-5 rounded-full px-16 py-7 neon-border">
