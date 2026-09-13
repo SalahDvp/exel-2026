@@ -138,6 +138,13 @@
   to { transform: rotate(360deg); }
 }
 
+/* Typewriter caret for the EN → AR headline swap */
+@keyframes caret-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+
+
 /* ---------- Animation utilities (calm, refined pacing) ---------- */
 .animate-fade-in-up { animation: fadeInUp 1.15s cubic-bezier(0.22, 0.7, 0.2, 1) both; }
 .animate-fade-in { animation: fadeIn 1.2s ease both; }
@@ -403,5 +410,47 @@
     height: 100%;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
     animation: sheen 5s ease-in-out infinite;
+  }
+
+  /* ---------- EN → AR bilingual transition ---------- */
+
+  /* Blinking cursor shown while a headline deletes English / types Arabic */
+  .type-caret {
+    display: inline-block;
+    width: 0.055em;
+    height: 0.92em;
+    margin-inline-start: 0.06em;
+    border-radius: 3px;
+    background: var(--accent-text);
+    box-shadow: 0 0 14px rgba(99, 102, 241, 0.7);
+    vertical-align: -0.08em;
+    animation: caret-blink 1.05s steps(1, end) infinite;
+  }
+
+  /* Body copy cross-fades (English out, Arabic in) on each language change */
+  .lang-fade {
+    transition: opacity 0.28s ease;
+  }
+
+  /* Arabic typography + right-to-left flow */
+  [dir="rtl"] {
+    font-family: var(--font-arabic), var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  }
+  /* The italic-serif accent has no Arabic form — use a bold Arabic cut instead,
+     keeping the indigo gradient fill. */
+  [dir="rtl"] .accent-serif {
+    font-family: var(--font-arabic), var(--font-libre), Georgia, serif;
+    font-style: normal;
+    font-weight: 700;
+  }
+  /* Arabic runs a touch airier so the gradient headlines stay legible */
+  [dir="rtl"] h1,
+  [dir="rtl"] h2 {
+    letter-spacing: 0;
+    line-height: 1.18;
+  }
+  /* Mirror directional arrows when reading right-to-left */
+  [dir="rtl"] .flip-rtl {
+    transform: scaleX(-1);
   }
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Manrope, Libre_Baskerville } from 'next/font/google'
+import { Manrope, Libre_Baskerville, Cairo } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
@@ -18,6 +18,14 @@ const libre = Libre_Baskerville({
   style: ['normal', 'italic'],
 })
 
+// Arabic display face for the EN → AR transition (pairs with Manrope)
+const cairo = Cairo({
+  subsets: ['arabic'],
+  variable: '--font-arabic',
+  display: 'swap',
+  weight: ['400', '500', '600', '700', '800'],
+})
+
 export const metadata: Metadata = {
   title: 'Colitrack — ECSEL EXPO 2026',
   description: 'Smart SMS Solutions for E-commerce. Real-time parcel tracking, built for Algeria. Live at ECSEL EXPO 2026, Algiers.',
@@ -30,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`dark ${manrope.variable} ${libre.variable}`}>
+    <html lang="en" className={`dark ${manrope.variable} ${libre.variable} ${cairo.variable}`}>
       <body className="font-sans antialiased">
         {children}
         <Analytics />

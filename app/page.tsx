@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   Package,
   Truck,
@@ -40,33 +40,40 @@ import {
 /*  Section schedule (auto-advancing kiosk loop)                       */
 /* ------------------------------------------------------------------ */
 const sections: { id: string; component: () => JSX.Element; duration: number }[] = [
-  { id: "intro", component: IntroSection, duration: 10000 },
-  { id: "about", component: AboutSection, duration: 9500 },
-  { id: "video", component: VideoSection, duration: 23000 },
-  { id: "how", component: HowItWorksSection, duration: 12500 },
-  { id: "dashboard", component: DashboardSection, duration: 15000 },
-  { id: "numbers", component: KeyNumbersSection, duration: 10500 },
-  { id: "features", component: FeaturesSection, duration: 12500 },
-  { id: "results", component: ResultsSection, duration: 11500 },
-  { id: "partners", component: PartnersSection, duration: 9000 },
-  { id: "pricing", component: PricingSection, duration: 12500 },
-  { id: "testimonials", component: TestimonialsSection, duration: 12000 },
-  { id: "offer", component: SpecialOfferSection, duration: 9500 },
-  { id: "cta", component: CTASection, duration: 8500 },
+  { id: "intro", component: IntroSection, duration: 12000 },
+  { id: "about", component: AboutSection, duration: 11500 },
+  { id: "video", component: VideoSection, duration: 26000 },
+  { id: "how", component: HowItWorksSection, duration: 15000 },
+  { id: "dashboard", component: DashboardSection, duration: 18000 },
+  { id: "numbers", component: KeyNumbersSection, duration: 12500 },
+  { id: "features", component: FeaturesSection, duration: 15000 },
+  { id: "results", component: ResultsSection, duration: 14000 },
+  { id: "partners", component: PartnersSection, duration: 11000 },
+  { id: "pricing", component: PricingSection, duration: 15000 },
+  { id: "testimonials", component: TestimonialsSection, duration: 14500 },
+  { id: "offer", component: SpecialOfferSection, duration: 11500 },
+  { id: "cta", component: CTASection, duration: 10500 },
 ]
 
 export default function ExhibitionScreen() {
   const [currentSection, setCurrentSection] = useState(0)
+  const [displayedSection, setDisplayedSection] = useState(0)
+  const [stageVisible, setStageVisible] = useState(true)
   const [autoplay, setAutoplay] = useState(true)
   const [theme, setTheme] = useState<"dark" | "light">("dark")
   const [themeLocked, setThemeLocked] = useState(false)
+  const [lang, setLang] = useState<Lang>("en")
 
   // Optional kiosk config: ?s=<index> opens a slide, ?auto=0 holds it,
-  // ?theme=light|dark locks a theme, ?theme=auto alternates each loop.
+  // ?theme=light|dark locks a theme.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const s = parseInt(params.get("s") || "", 10)
-    if (!Number.isNaN(s)) setCurrentSection(((s % sections.length) + sections.length) % sections.length)
+    if (!Number.isNaN(s)) {
+      const idx = ((s % sections.length) + sections.length) % sections.length
+      setCurrentSection(idx)
+      setDisplayedSection(idx) // a deep-link jumps straight in, no crossfade
+    }
     if (params.get("auto") === "0") setAutoplay(false)
     const t = params.get("theme")
     if (t === "light" || t === "dark") {
@@ -92,18 +99,69 @@ export default function ExhibitionScreen() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
+  // Stable refs so goNext keeps a single identity (keeps timers from resetting).
+  const currentSectionRef = useRef(currentSection)
+  const themeLockedRef = useRef(themeLocked)
+  useEffect(() => {
+    currentSectionRef.current = currentSection
+  }, [currentSection])
+  useEffect(() => {
+    themeLockedRef.current = themeLocked
+  }, [themeLocked])
+
+  // Advance to the next slide (wraps around, alternates theme each full loop).
+  const goNext = useCallback(() => {
+    const next = (currentSectionRef.current + 1) % sections.length
+    // Alternate dark / bright each full loop unless the user locked a theme.
+    if (next === 0 && !themeLockedRef.current) setTheme((x) => (x === "dark" ? "light" : "dark"))
+    setCurrentSection(next)
+  }, [])
+
+  // The video slide reports when its reel has finished playing. Advance only
+  // while the kiosk is auto-playing; a held slide (?auto=0) stays paused on the
+  // last frame until it's manually moved forward.
+  const autoplayRef = useRef(autoplay)
+  useEffect(() => {
+    autoplayRef.current = autoplay
+  }, [autoplay])
+  const advanceFromReel = useCallback(() => {
+    if (autoplayRef.current) goNext()
+  }, [goNext])
+
+  // Smooth crossfade: hold the outgoing slide, fade it out, swap the content
+  // while it's hidden, then fade the new one in. `displayedSection` is what's on
+  // screen; `currentSection` is where we're heading.
+  useEffect(() => {
+    if (currentSection === displayedSection) return
+    setStageVisible(false)
+    const t = setTimeout(() => {
+      setDisplayedSection(currentSection)
+      setStageVisible(true)
+    }, 420)
+    return () => clearTimeout(t)
+  }, [currentSection, displayedSection])
+
+  // Run the auto-play timer off the slide that's actually on screen.
   useEffect(() => {
     if (!autoplay) return
-    const timeout = setTimeout(() => {
-      const next = (currentSection + 1) % sections.length
-      // Alternate dark / bright each full loop unless the user locked a theme.
-      if (next === 0 && !themeLocked) setTheme((x) => (x === "dark" ? "light" : "dark"))
-      setCurrentSection(next)
-    }, sections[currentSection].duration)
+    // The video slide isn't on a fixed timer — it advances when the reel ends
+    // (handled inside VideoSection) so the whole clip always plays to the end.
+    if (sections[displayedSection].id === "video") return
+    const timeout = setTimeout(goNext, sections[displayedSection].duration)
     return () => clearTimeout(timeout)
-  }, [currentSection, autoplay, themeLocked])
+  }, [displayedSection, autoplay, goNext])
 
-  const CurrentComponent = sections[currentSection].component
+  // Each slide reads in English long enough to take in the whole screen, then a
+  // cursor wipes it and types the Arabic. English holds for ~58% of the slide.
+  useEffect(() => {
+    setLang("en")
+    const duration = sections[displayedSection].duration
+    const hold = Math.min(Math.max(duration * 0.58, 5500), duration - 4500)
+    const t = setTimeout(() => setLang("ar"), hold)
+    return () => clearTimeout(t)
+  }, [displayedSection])
+
+  const CurrentComponent = sections[displayedSection].component
 
   return (
     <div
@@ -126,8 +184,15 @@ export default function ExhibitionScreen() {
       </header>
 
       {/* Main content */}
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-10 lg:px-20">
-        <CurrentComponent key={currentSection} />
+      <div
+        dir={lang === "ar" ? "rtl" : "ltr"}
+        className="relative z-10 flex min-h-screen items-center justify-center px-10 lg:px-20"
+      >
+        <LangContext.Provider value={lang}>
+          <AdvanceContext.Provider value={advanceFromReel}>
+            <CurrentComponent key={currentSection} />
+          </AdvanceContext.Provider>
+        </LangContext.Provider>
       </div>
 
       {/* Progress rail */}
@@ -148,22 +213,24 @@ export default function ExhibitionScreen() {
         colitrack.io
       </div>
 
-      {/* Clickable bright / dark toggle */}
-      <button
-        onClick={() => {
-          setTheme((t) => (t === "dark" ? "light" : "dark"))
-          setThemeLocked(true)
-        }}
-        aria-label="Toggle bright or dark mode"
-        title="Toggle bright / dark"
-        className="glass hover-glow absolute bottom-9 left-12 z-50 flex h-14 w-14 items-center justify-center rounded-full"
-      >
-        {theme === "dark" ? (
-          <Sun className="h-6 w-6 text-accent-ink" />
-        ) : (
-          <Moon className="h-6 w-6 text-accent-ink" />
-        )}
-      </button>
+      {/* Bright / dark toggle — hidden until you hover the bottom-right corner */}
+      <div className="group absolute bottom-0 right-0 z-50 flex h-36 w-44 items-end justify-end pb-9 pr-12">
+        <button
+          onClick={() => {
+            setTheme((t) => (t === "dark" ? "light" : "dark"))
+            setThemeLocked(true)
+          }}
+          aria-label="Toggle bright or dark mode"
+          title="Toggle bright / dark"
+          className="glass hover-glow pointer-events-none flex h-14 w-14 items-center justify-center rounded-full opacity-0 transition-opacity duration-300 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+        >
+          {theme === "dark" ? (
+            <Sun className="h-6 w-6 text-accent-ink" />
+          ) : (
+            <Moon className="h-6 w-6 text-accent-ink" />
+          )}
+        </button>
+      </div>
     </div>
   )
 }
@@ -175,7 +242,7 @@ function Logo({ size = "md" }: { size?: "md" | "xl" }) {
   const mark = size === "xl" ? "h-24 w-24 rounded-3xl text-6xl" : "h-14 w-14 rounded-2xl text-3xl"
   const word = size === "xl" ? "text-7xl" : "text-4xl"
   return (
-    <div className="flex flex-col gap-1.5">
+    <div dir="ltr" className="flex flex-col gap-1.5">
       <div className="flex items-center gap-4">
         <div
           className={`flex ${mark} items-center justify-center font-extrabold text-white shadow-[0_10px_28px_-10px_rgba(99,102,241,0.9)]`}
@@ -329,6 +396,154 @@ function useCountUp(target: number, duration = 1700) {
   return val
 }
 
+/* A slide can call this (via context) to advance the kiosk itself — used by the
+   video slide so it moves on only once the reel has finished. */
+const AdvanceContext = createContext<() => void>(() => {})
+const useAdvance = () => useContext(AdvanceContext)
+
+/* Shrinks a tall slide just enough to sit between the header and the progress
+   rail on any screen height, so content-dense slides never overflow. Slides
+   that already fit stay at 1×. Scaling is visual only (layout stays centered). */
+function FitToViewport({ reserve = 280, children }: { reserve?: number; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const natural = el.offsetHeight
+      const avail = window.innerHeight - reserve
+      setScale(natural > avail ? Math.max(avail / natural, 0.5) : 1)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener("resize", measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", measure)
+    }
+  }, [reserve])
+  return (
+    <div
+      className="flex w-full justify-center"
+      style={{ transform: `scale(${scale})`, transformOrigin: "center center", transition: "transform 0.35s ease" }}
+    >
+      <div ref={ref} className="w-full">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/* ================================================================== */
+/*  BILINGUAL ENGINE — every screen reads in English, a cursor wipes   */
+/*  it, then types the Arabic in its place.                            */
+/* ================================================================== */
+type Lang = "en" | "ar"
+const LangContext = createContext<Lang>("en")
+const useLang = () => useContext(LangContext)
+
+/* Split a headline around its accent phrase so the accent keeps the
+   indigo gradient while at rest. */
+function renderHeadline(full: string, accent: string | undefined, accentClassName: string) {
+  if (!accent) return full
+  const i = full.indexOf(accent)
+  if (i === -1) return full
+  return (
+    <>
+      {full.slice(0, i)}
+      <span className={accentClassName}>{accent}</span>
+      {full.slice(i + accent.length)}
+    </>
+  )
+}
+
+/* Headline that backspaces the English with a blinking cursor and types
+   the Arabic in its place the moment the language flips. */
+function Typewriter({
+  en,
+  ar,
+  accentEn,
+  accentAr,
+  accentClassName = "text-gradient accent-serif",
+}: {
+  en: string
+  ar: string
+  accentEn?: string
+  accentAr?: string
+  accentClassName?: string
+}) {
+  const lang = useLang()
+  const [display, setDisplay] = useState(en)
+  const [animating, setAnimating] = useState(false)
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  useEffect(() => {
+    const clearAll = () => {
+      timers.current.forEach(clearTimeout)
+      timers.current = []
+    }
+    if (lang === "en") {
+      clearAll()
+      setAnimating(false)
+      setDisplay(en)
+      return
+    }
+    // lang === "ar": delete English char-by-char, pause, then type Arabic
+    clearAll()
+    setAnimating(true)
+    const at = (fn: () => void, d: number) => timers.current.push(setTimeout(fn, d))
+    let t = 0
+    for (let i = en.length - 1; i >= 0; i--) {
+      const slice = en.slice(0, i)
+      t += 24
+      at(() => setDisplay(slice), t)
+    }
+    t += 220 // a beat with the bare cursor
+    for (let i = 1; i <= ar.length; i++) {
+      const slice = ar.slice(0, i)
+      t += 52
+      at(() => setDisplay(slice), t)
+    }
+    at(() => setAnimating(false), t + 40)
+    return clearAll
+  }, [lang, en, ar])
+
+  if (animating) {
+    return (
+      <>
+        <span dir={lang === "ar" ? "rtl" : "ltr"}>{display}</span>
+        <span className="type-caret" aria-hidden="true" />
+      </>
+    )
+  }
+  return lang === "ar"
+    ? renderHeadline(ar, accentAr, accentClassName)
+    : renderHeadline(en, accentEn, accentClassName)
+}
+
+/* Body copy: cross-fades English out and Arabic in on each flip. */
+function T({ en, ar }: { en: React.ReactNode; ar: React.ReactNode }) {
+  const lang = useLang()
+  const [shown, setShown] = useState<Lang>(lang)
+  const [visible, setVisible] = useState(true)
+  useEffect(() => {
+    if (shown === lang) return
+    setVisible(false)
+    const t = setTimeout(() => {
+      setShown(lang)
+      setVisible(true)
+    }, 260)
+    return () => clearTimeout(t)
+  }, [lang, shown])
+  return (
+    <span className="lang-fade" style={{ opacity: visible ? 1 : 0 }}>
+      {shown === "ar" ? ar : en}
+    </span>
+  )
+}
+
 /* ================================================================== */
 /*  1 · INTRO                                                          */
 /* ================================================================== */
@@ -339,23 +554,31 @@ function IntroSection() {
 
       <div className="space-y-8">
         <h1 className="max-w-5xl text-balance text-6xl font-bold leading-[1.06] tracking-[-0.02em] text-ink lg:text-7xl xl:text-[5.25rem]">
-          Transform your e-commerce with{" "}
-          <span className="text-gradient accent-serif font-normal">Smart SMS Solutions</span>
+          <Typewriter
+            en="Transform your e-commerce with Smart SMS Solutions"
+            ar="طوّر تجارتك الإلكترونية مع حلول SMS الذكية"
+            accentEn="Smart SMS Solutions"
+            accentAr="حلول SMS الذكية"
+            accentClassName="text-gradient accent-serif font-normal"
+          />
         </h1>
 
         <p className="mx-auto max-w-3xl text-balance text-3xl font-light leading-snug text-ink/60 lg:text-[2.1rem]">
-          Real-time notifications, happier customers, and fully automated parcel tracking.
+          <T
+            en="Real-time notifications, happier customers, and fully automated parcel tracking."
+            ar="إشعارات فورية، زبائن أكثر رضًا، وتتبّع آلي كامل للطرود."
+          />
         </p>
       </div>
 
       <div className="mt-2 flex items-center gap-6 text-xl font-medium text-ink/55 lg:text-2xl">
         <span className="flex items-center gap-2.5">
-          <MapPin className="h-6 w-6 text-accent-ink" /> Real-time tracking
+          <MapPin className="h-6 w-6 text-accent-ink" /> <T en="Real-time tracking" ar="تتبّع فوري" />
         </span>
         <span className="h-1 w-1 rounded-full bg-ink/25" />
-        <span>SMS on every step</span>
+        <span><T en="SMS on every step" ar="رسائل SMS في كل خطوة" /></span>
         <span className="h-1 w-1 rounded-full bg-ink/25" />
-        <span>Built for Algeria 🇩🇿</span>
+        <span><T en="Built for Algeria 🇩🇿" ar="مصمّم للجزائر 🇩🇿" /></span>
       </div>
     </div>
   )
@@ -366,18 +589,46 @@ function IntroSection() {
 /* ================================================================== */
 function AboutSection() {
   const items = [
-    { icon: Bell, title: "Automatic SMS at every step", body: "Order confirmed, out-for-delivery, delivered — sent in real time, on autopilot." },
-    { icon: MapPin, title: "Live tracking across 58 wilayas", body: "Every parcel followed from pickup to the customer's door, nationwide." },
-    { icon: Target, title: "Retargeting that recovers orders", body: "Re-engage no-answer customers automatically and win the sale back." },
+    {
+      icon: Bell,
+      title: { en: "Automatic SMS at every step", ar: "رسائل SMS آلية في كل خطوة" },
+      body: {
+        en: "Order confirmed, out-for-delivery, delivered — sent in real time, on autopilot.",
+        ar: "تأكيد الطلب، خرج للتوصيل، تمّ التسليم — تُرسَل فوريًا وبشكل آلي.",
+      },
+    },
+    {
+      icon: MapPin,
+      title: { en: "Live tracking across 58 wilayas", ar: "تتبّع مباشر عبر 58 ولاية" },
+      body: {
+        en: "Every parcel followed from pickup to the customer's door, nationwide.",
+        ar: "كل طرد مُتابَع من الاستلام إلى باب الزبون، عبر كامل الوطن.",
+      },
+    },
+    {
+      icon: Target,
+      title: { en: "Retargeting that recovers orders", ar: "إعادة استهداف تسترجع الطلبات" },
+      body: {
+        en: "Re-engage no-answer customers automatically and win the sale back.",
+        ar: "أعد التواصل مع الزبائن غير المجيبين آليًا واسترجع عملية البيع.",
+      },
+    },
   ]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-12">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>Smart SMS Automation</Eyebrow>
+          <Eyebrow>
+            <T en="Smart SMS Automation" ar="أتمتة SMS الذكية" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Every parcel, <span className="text-gradient accent-serif">tracked &amp; notified.</span>
+          <Typewriter
+            en="Every parcel, tracked & notified."
+            ar="كل طرد، يُتابَع ويصلك إشعاره."
+            accentEn="tracked & notified."
+            accentAr="يُتابَع ويصلك إشعاره."
+          />
         </h2>
       </div>
       <div className="grid gap-8 md:grid-cols-3">
@@ -390,8 +641,12 @@ function AboutSection() {
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#a5b4fc] shadow-[0_12px_30px_-10px_rgba(99,102,241,0.9)]">
               <it.icon className="h-11 w-11 text-white" />
             </div>
-            <h3 className="text-3xl font-extrabold text-ink">{it.title}</h3>
-            <p className="text-2xl leading-relaxed text-ink/65">{it.body}</p>
+            <h3 className="text-3xl font-extrabold text-ink">
+              <T en={it.title.en} ar={it.title.ar} />
+            </h3>
+            <p className="text-2xl leading-relaxed text-ink/65">
+              <T en={it.body.en} ar={it.body.ar} />
+            </p>
           </div>
         ))}
       </div>
@@ -405,6 +660,7 @@ function AboutSection() {
 function VideoSection() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [muted, setMuted] = useState(true)
+  const advance = useAdvance()
 
   const post = (func: string, args: any[] = []) =>
     iframeRef.current?.contentWindow?.postMessage(
@@ -412,15 +668,72 @@ function VideoSection() {
       "*",
     )
 
-  // Muted-autoplay nudge for kiosk browsers (mute keeps autoplay allowed).
+  // Autoplay must start muted so it always plays. Then we ASK for sound — it
+  // only takes on a browser launched with --autoplay-policy=no-user-gesture-
+  // required (kiosk). We re-issue playVideo so a blocked unmute can't leave the
+  // reel paused; on a normal browser it keeps playing muted until tapped.
   const nudgePlay = () => {
+    // Subscribe to the player's events so we're notified when the reel ends.
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "listening", id: 1, channel: "widget" }),
+      "*",
+    )
     let n = 0
     const id = setInterval(() => {
-      post("mute")
       post("playVideo")
-      if (++n >= 6) clearInterval(id)
-    }, 700)
+      if (++n >= 4) clearInterval(id)
+    }, 600)
+    setTimeout(() => {
+      post("unMute")
+      post("setVolume", [100])
+      post("playVideo")
+    }, 1400)
   }
+
+  // Move on only once the clip has played through — never cut it off mid-reel.
+  // The reel no longer loops: we watch the YouTube player's messages for the
+  // ENDED state, and arm a safety timer from the clip's real length in case
+  // that one event is ever dropped, so the kiosk can never stall on this slide.
+  useEffect(() => {
+    let done = false
+    let fallback: ReturnType<typeof setTimeout>
+    let lengthLocked = false
+    const finish = () => {
+      if (done) return
+      done = true
+      clearTimeout(fallback)
+      post("pauseVideo") // hold on the last frame — no loop, no restart
+      advance() // advances only while auto-playing; a held slide stays paused
+    }
+    const onMessage = (e: MessageEvent) => {
+      if (typeof e.data !== "string" || !e.origin.includes("youtube")) return
+      let d: any
+      try {
+        d = JSON.parse(e.data)
+      } catch {
+        return
+      }
+      const info = d?.info
+      const state =
+        d?.event === "onStateChange" ? d?.info : d?.event === "infoDelivery" ? info?.playerState : undefined
+      if (state === 0) {
+        finish() // 0 = ENDED
+        return
+      }
+      // Once the real duration is known, arm a safety advance just past the end.
+      if (!lengthLocked && info && typeof info.duration === "number" && info.duration > 1) {
+        lengthLocked = true
+        clearTimeout(fallback)
+        fallback = setTimeout(finish, (info.duration + 5) * 1000)
+      }
+    }
+    window.addEventListener("message", onMessage)
+    fallback = setTimeout(finish, 150000) // generous cap until the length is known
+    return () => {
+      window.removeEventListener("message", onMessage)
+      clearTimeout(fallback)
+    }
+  }, [advance])
 
   const toggleSound = () => {
     if (muted) {
@@ -434,24 +747,36 @@ function VideoSection() {
   }
 
   return (
-    <div className="animate-fade-in-up grid w-full max-w-7xl items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
+    <div className="animate-fade-in-up grid w-full max-w-7xl items-center gap-16 lg:grid-cols-[1fr_0.75fr]">
       <div className="space-y-8">
-        <Eyebrow>Watch it work</Eyebrow>
+        <Eyebrow>
+          <T en="Watch it work" ar="شاهدها تعمل" />
+        </Eyebrow>
         <h2 className="text-balance text-6xl font-extrabold leading-[1.05] text-ink lg:text-7xl">
-          See Colitrack <span className="text-gradient accent-serif">in action.</span>
+          <Typewriter
+            en="See Colitrack in action."
+            ar="شاهد Colitrack أثناء العمل."
+            accentEn="in action."
+            accentAr="أثناء العمل."
+          />
         </h2>
         <p className="text-balance text-2xl leading-relaxed text-ink/65 lg:text-3xl">
-          A quick look at how every parcel turns into a tracked, notified, and recovered order — fully on autopilot.
+          <T
+            en="A quick look at how every parcel turns into a tracked, notified, and recovered order — fully on autopilot."
+            ar="نظرة سريعة على كيف يتحوّل كل طرد إلى طلب مُتتبَّع ومُشعَر به ومُسترجَع — بشكل آلي بالكامل."
+          />
         </p>
         <div className="space-y-4">
           {[
-            "Automatic SMS at every delivery step",
-            "Live parcel tracking across all 58 wilayas",
-            "Retargeting that recovers no-answer orders",
-          ].map((t, i) => (
+            { en: "Automatic SMS at every delivery step", ar: "رسائل SMS آلية في كل خطوة توصيل" },
+            { en: "Live parcel tracking across all 58 wilayas", ar: "تتبّع مباشر للطرود عبر كل 58 ولاية" },
+            { en: "Retargeting that recovers no-answer orders", ar: "إعادة استهداف تسترجع طلبات غير المجيبين" },
+          ].map((b, i) => (
             <div key={i} className="flex items-center gap-4">
               <CheckCircle2 className="h-8 w-8 flex-shrink-0 text-accent-ink" />
-              <span className="text-2xl font-medium text-ink/85">{t}</span>
+              <span className="text-2xl font-medium text-ink/85">
+                <T en={b.en} ar={b.ar} />
+              </span>
             </div>
           ))}
         </div>
@@ -460,11 +785,11 @@ function VideoSection() {
           className="glass hover-glow inline-flex items-center gap-3 rounded-full px-6 py-3 text-xl font-semibold text-ink"
         >
           {muted ? <VolumeX className="h-6 w-6 text-accent-ink" /> : <Volume2 className="h-6 w-6 text-accent-ink" />}
-          {muted ? "Tap for sound" : "Sound on"}
+          {muted ? <T en="Tap for sound" ar="اضغط للصوت" /> : <T en="Sound on" ar="الصوت مُفعّل" />}
         </button>
       </div>
 
-      {/* Phone mockup showing the demo inside the Colitrack app */}
+      {/* Phone playing the vertical reel full-screen */}
       <div className="flex justify-center">
         <PhoneMockup iframeRef={iframeRef} onVideoLoad={nudgePlay} muted={muted} onToggleSound={toggleSound} />
       </div>
@@ -484,7 +809,7 @@ function PhoneMockup({
   onToggleSound: () => void
 }) {
   return (
-    <div className="relative" style={{ width: 384 }}>
+    <div className="relative" style={{ width: 340 }}>
       {/* Glow */}
       <div className="animate-pulse-glow absolute -inset-8 rounded-[70px] bg-[#6366f1]/20 blur-3xl" />
 
@@ -495,16 +820,30 @@ function PhoneMockup({
 
       {/* Device body */}
       <div
-        className="relative rounded-[54px] p-[14px] shadow-[0_46px_100px_-34px_rgba(10,12,30,0.9)]"
+        className="relative rounded-[54px] p-[13px] shadow-[0_46px_100px_-34px_rgba(10,12,30,0.9)]"
         style={{ background: "linear-gradient(160deg,#232838,#0c0e16)", border: "1px solid rgba(255,255,255,0.10)" }}
       >
-        {/* Screen */}
-        <div className="relative overflow-hidden rounded-[42px] bg-[#0a0d16]" style={{ aspectRatio: "9 / 17.4" }}>
+        {/* Screen — the reel fills it edge to edge */}
+        <div className="relative overflow-hidden rounded-[44px] bg-black" style={{ aspectRatio: "9 / 19.3" }}>
+          {/* The vertical reel, covering the whole screen */}
+          <div className="absolute inset-0 overflow-hidden">
+            <iframe
+              ref={iframeRef}
+              onLoad={onVideoLoad}
+              className="absolute left-1/2 top-1/2 h-full -translate-x-1/2 -translate-y-1/2"
+              style={{ aspectRatio: "9 / 16", minWidth: "100%", minHeight: "100%" }}
+              src="https://www.youtube.com/embed/82vgT6ypObw?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&fs=0&iv_load_policy=3"
+              title="Colitrack in action"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          </div>
+
           {/* Dynamic island */}
           <div className="absolute left-1/2 top-3 z-30 h-8 w-28 -translate-x-1/2 rounded-full bg-black" />
 
-          {/* Status bar */}
-          <div className="flex items-center justify-between px-7 pt-4 pb-1 text-white">
+          {/* Status bar (overlaid on the reel) */}
+          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-7 pt-4 text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.6)]">
             <span className="text-sm font-bold">9:41</span>
             <div className="flex items-center gap-1.5">
               <SignalHigh className="h-4 w-4" />
@@ -513,81 +852,42 @@ function PhoneMockup({
             </div>
           </div>
 
-          {/* App header */}
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+          {/* Top-right: Live + sound */}
+          <div className="absolute right-4 top-14 z-20 flex flex-col items-end gap-2">
+            <div className="flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" style={{ animation: "live-ping 2s infinite" }} />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">Live</span>
+            </div>
+            <button
+              onClick={onToggleSound}
+              aria-label={muted ? "Unmute video" : "Mute video"}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-md"
+            >
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </button>
+          </div>
+
+          {/* Bottom scrim + reel caption */}
+          <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 via-black/35 to-transparent px-4 pb-7 pt-16">
             <div className="flex items-center gap-2.5">
               <div
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-extrabold text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-extrabold text-white ring-2 ring-white/70"
                 style={{ background: "linear-gradient(135deg, #6366f1, #a5b4fc)" }}
               >
                 C
               </div>
-              <span className="text-base font-extrabold text-white">Colitrack</span>
+              <span className="text-sm font-extrabold text-white">colitrack.io</span>
+              <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-md">
+                Demo
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              {/* Sound toggle (browsers block autoplay WITH sound → tap to enable) */}
-              <button
-                onClick={onToggleSound}
-                aria-label={muted ? "Unmute video" : "Mute video"}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white"
-              >
-                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-              </button>
-              <div className="flex items-center gap-1.5 rounded-full bg-emerald-400/15 px-2.5 py-1">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" style={{ animation: "live-ping 2s infinite" }} />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">Live</span>
-              </div>
-            </div>
-          </div>
-
-          {/* The demo video — the hero of the screen (16:9, full width) */}
-          <div className="relative aspect-video w-full overflow-hidden bg-black">
-            <iframe
-              ref={iframeRef}
-              onLoad={onVideoLoad}
-              className="absolute inset-0 h-full w-full"
-              src="https://www.youtube.com/embed/82vgT6ypObw?autoplay=1&mute=1&loop=1&playlist=82vgT6ypObw&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&fs=0"
-              title="Colitrack in action"
-              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-              allowFullScreen
-            />
-          </div>
-
-          {/* Live SMS / tracking feed */}
-          <div className="space-y-2.5 px-4 py-3.5">
-            <p className="px-1 text-[11px] font-bold uppercase tracking-widest text-white/40">Live activity</p>
-
-            <div className="flex items-start gap-3 rounded-2xl bg-white/[0.05] p-2.5">
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#6366f1]/20">
-                <Truck className="h-4 w-4 text-[#a5b4fc]" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[12.5px] font-semibold leading-snug text-white">
-                  Parcel CT-90412 is out for delivery 🚚
-                </p>
-                <p className="mt-0.5 text-[10.5px] text-white/45">Alger · SMS sent · 14:02</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-2xl bg-white/[0.05] p-2.5">
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
-                <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[12.5px] font-semibold leading-snug text-white">Delivered ✓ — confirmation sent</p>
-                <p className="mt-0.5 text-[10.5px] text-white/45">Oran · Return avoided · 13:47</p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#4f46e5] p-2.5">
-              <p className="text-[12.5px] font-semibold leading-snug text-white">
-                🎯 Retargeting re-engaged 214 customers
-              </p>
-            </div>
+            <p className="mt-2.5 text-[13px] font-semibold leading-snug text-white [text-shadow:0_1px_6px_rgba(0,0,0,0.7)]">
+              📦 « Votre colis a été expédié » — chaque étape, un SMS automatique.
+            </p>
           </div>
 
           {/* Home indicator */}
-          <div className="absolute bottom-2 left-1/2 h-1.5 w-32 -translate-x-1/2 rounded-full bg-white/40" />
+          <div className="absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-white/50" />
         </div>
       </div>
     </div>
@@ -599,18 +899,49 @@ function PhoneMockup({
 /* ================================================================== */
 function HowItWorksSection() {
   const steps = [
-    { n: "01", icon: Plug, title: "Connect your shipping company", body: "Link Yalidine, Noest, ZR Express or Maystro in one click. Your parcels sync automatically." },
-    { n: "02", icon: MessageSquare, title: "Activate the SMS you want", body: "Order confirmation, out-for-delivery, delivered, and retargeting for no-answers." },
-    { n: "03", icon: Zap, title: "We handle everything", body: "Colitrack sends the right SMS at the right moment, in real time. You just watch it work." },
+    {
+      n: "01",
+      icon: Plug,
+      title: { en: "Connect your shipping company", ar: "اربط شركة التوصيل" },
+      body: {
+        en: "Link Yalidine, Noest, ZR Express or Maystro in one click. Your parcels sync automatically.",
+        ar: "اربط Yalidine أو Noest أو ZR Express أو Maystro بنقرة واحدة، وتتزامن طرودك آليًا.",
+      },
+    },
+    {
+      n: "02",
+      icon: MessageSquare,
+      title: { en: "Activate the SMS you want", ar: "فعّل الرسائل التي تريدها" },
+      body: {
+        en: "Order confirmation, out-for-delivery, delivered, and retargeting for no-answers.",
+        ar: "تأكيد الطلب، خرج للتوصيل، تمّ التسليم، وإعادة استهداف غير المجيبين.",
+      },
+    },
+    {
+      n: "03",
+      icon: Zap,
+      title: { en: "We handle everything", ar: "نتكفّل بكل شيء" },
+      body: {
+        en: "Colitrack sends the right SMS at the right moment, in real time. You just watch it work.",
+        ar: "يرسل Colitrack الرسالة المناسبة في الوقت المناسب، فوريًا. ما عليك سوى المشاهدة.",
+      },
+    },
   ]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-14">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>How it works</Eyebrow>
+          <Eyebrow>
+            <T en="How it works" ar="كيف يعمل" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Set it up once. <span className="text-gradient accent-serif">We handle the rest.</span>
+          <Typewriter
+            en="Set it up once. We handle the rest."
+            ar="اضبطه مرّة واحدة. ونتكفّل بالباقي."
+            accentEn="We handle the rest."
+            accentAr="ونتكفّل بالباقي."
+          />
         </h2>
       </div>
       <div className="grid gap-8 md:grid-cols-3">
@@ -623,11 +954,15 @@ function HowItWorksSection() {
                   <s.icon className="h-8 w-8 text-accent-ink" />
                 </div>
               </div>
-              <h3 className="text-3xl font-extrabold text-ink">{s.title}</h3>
-              <p className="text-2xl leading-relaxed text-ink/65">{s.body}</p>
+              <h3 className="text-3xl font-extrabold text-ink">
+                <T en={s.title.en} ar={s.title.ar} />
+              </h3>
+              <p className="text-2xl leading-relaxed text-ink/65">
+                <T en={s.body.en} ar={s.body.ar} />
+              </p>
             </div>
             {i < steps.length - 1 && (
-              <ArrowRight className="absolute -right-6 top-1/2 hidden h-10 w-10 -translate-y-1/2 text-[#6366f1]/60 md:block" />
+              <ArrowRight className="flip-rtl absolute -right-6 top-1/2 hidden h-10 w-10 -translate-y-1/2 text-[#6366f1]/60 md:block" />
             )}
           </div>
         ))}
@@ -641,43 +976,53 @@ function HowItWorksSection() {
 /* ================================================================== */
 function DashboardSection() {
   const kpis = [
-    { icon: Package, label: "Parcels tracked · 30d", value: "12,480", delta: "+18%", up: true },
-    { icon: BadgeCheck, label: "Delivery rate", value: "94.2%", delta: "+3.1%", up: true },
-    { icon: Send, label: "SMS delivered", value: "38,912", delta: "+22%", up: true },
-    { icon: RotateCcw, label: "Return rate", value: "5.8%", delta: "-2.4%", up: false },
+    { icon: Package, label: { en: "Parcels tracked · 30d", ar: "طرود مُتتبَّعة · 30 يومًا" }, value: "12,480", delta: "+18%", up: true },
+    { icon: BadgeCheck, label: { en: "Delivery rate", ar: "نسبة التسليم" }, value: "94.2%", delta: "+3.1%", up: true },
+    { icon: Send, label: { en: "SMS delivered", ar: "رسائل SMS مُسلَّمة" }, value: "38,912", delta: "+22%", up: true },
+    { icon: RotateCcw, label: { en: "Return rate", ar: "نسبة الإرجاع" }, value: "5.8%", delta: "-2.4%", up: false },
   ]
   const speed = [
-    { day: "Day 1", pct: 70, note: "Same / next-day" },
-    { day: "Day 2", pct: 20, note: "Second attempt" },
-    { day: "Day 3", pct: 10, note: "Final window" },
+    { day: { en: "Day 1", ar: "اليوم 1" }, pct: 70, note: { en: "Same / next-day", ar: "نفس اليوم / الغد" } },
+    { day: { en: "Day 2", ar: "اليوم 2" }, pct: 20, note: { en: "Second attempt", ar: "المحاولة الثانية" } },
+    { day: { en: "Day 3", ar: "اليوم 3" }, pct: 10, note: { en: "Final window", ar: "النافذة الأخيرة" } },
   ]
   const wilayas = [
-    { name: "Alger", n: 3120, pct: 100 },
-    { name: "Oran", n: 2560, pct: 82 },
-    { name: "Constantine", n: 1990, pct: 64 },
-    { name: "Blida", n: 1585, pct: 51 },
-    { name: "Sétif", n: 1340, pct: 43 },
+    { name: { en: "Alger", ar: "الجزائر" }, n: 3120, pct: 100 },
+    { name: { en: "Oran", ar: "وهران" }, n: 2560, pct: 82 },
+    { name: { en: "Constantine", ar: "قسنطينة" }, n: 1990, pct: 64 },
+    { name: { en: "Blida", ar: "البليدة" }, n: 1585, pct: 51 },
+    { name: { en: "Sétif", ar: "سطيف" }, n: 1340, pct: 43 },
   ]
   return (
-    <div className="animate-fade-in-up w-full max-w-[1500px] space-y-8">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <Eyebrow>Peek inside — it&apos;s live</Eyebrow>
-        <h2 className="text-balance text-5xl font-extrabold text-ink lg:text-6xl">
-          The whole delivery, <span className="text-gradient accent-serif">on one screen.</span>
+    <FitToViewport>
+      <div className="animate-fade-in-up mx-auto w-full max-w-[1500px] space-y-5">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <Eyebrow>
+          <T en="Peek inside — it's live" ar="ألقِ نظرة — إنها مباشرة" />
+        </Eyebrow>
+        <h2 className="text-balance text-4xl font-extrabold text-ink lg:text-5xl">
+          <Typewriter
+            en="The whole delivery, on one screen."
+            ar="عملية التوصيل كاملة، على شاشة واحدة."
+            accentEn="on one screen."
+            accentAr="على شاشة واحدة."
+          />
         </h2>
       </div>
 
       {/* App window */}
       <div className="glass-strong overflow-hidden rounded-3xl neon-border">
         {/* Chrome bar */}
-        <div className="flex items-center justify-between border-b border-ink/10 bg-ink/[0.03] px-8 py-4">
+        <div className="flex items-center justify-between border-b border-ink/10 bg-ink/[0.03] px-8 py-3">
           <div className="flex items-center gap-4">
             <div className="flex gap-2">
               <span className="h-3.5 w-3.5 rounded-full bg-[#ff5f57]" />
               <span className="h-3.5 w-3.5 rounded-full bg-[#febc2e]" />
               <span className="h-3.5 w-3.5 rounded-full bg-[#28c840]" />
             </div>
-            <span className="text-xl font-semibold text-ink/55">app.colitrack.com · Demo Store</span>
+            <span className="text-xl font-semibold text-ink/55">
+              <T en="app.colitrack.com · Demo Store" ar="app.colitrack.com · متجر تجريبي" />
+            </span>
           </div>
           <div className="flex items-center gap-2.5 rounded-full bg-emerald-400/10 px-4 py-1.5">
             <span className="h-3 w-3 rounded-full bg-emerald-400" style={{ animation: "live-ping 2s infinite" }} />
@@ -685,11 +1030,11 @@ function DashboardSection() {
           </div>
         </div>
 
-        <div className="grid gap-8 p-8 lg:grid-cols-[1.15fr_1fr]">
+        <div className="grid gap-6 p-6 lg:grid-cols-[1.15fr_1fr]">
           {/* KPI grid */}
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-2 gap-4">
             {kpis.map((k, i) => (
-              <div key={i} className="animate-fade-in-up rounded-2xl border border-ink/10 bg-ink/[0.03] p-6" style={{ animationDelay: `${i * 0.1}s` }}>
+              <div key={i} className="animate-fade-in-up rounded-2xl border border-ink/10 bg-ink/[0.03] p-5" style={{ animationDelay: `${i * 0.1}s` }}>
                 <div className="flex items-center justify-between">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/15 ring-1 ring-[#6366f1]/40">
                     <k.icon className="h-6 w-6 text-accent-ink" />
@@ -699,23 +1044,31 @@ function DashboardSection() {
                     {k.delta}
                   </span>
                 </div>
-                <p className="mt-4 text-5xl font-extrabold text-ink">{k.value}</p>
-                <p className="mt-1 text-xl text-ink/55">{k.label}</p>
+                <p className="mt-3 text-4xl font-extrabold text-ink">{k.value}</p>
+                <p className="mt-1 text-xl text-ink/55">
+                  <T en={k.label.en} ar={k.label.ar} />
+                </p>
               </div>
             ))}
           </div>
 
           {/* Right column */}
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Delivery speed */}
-            <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] p-6">
-              <p className="text-xl font-bold text-ink">Delivery speed</p>
-              <p className="mb-4 text-lg text-ink/45">Last 30 days · 12,480 parcels</p>
-              <div className="space-y-4">
+            <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] p-5">
+              <p className="text-xl font-bold text-ink">
+                <T en="Delivery speed" ar="سرعة التسليم" />
+              </p>
+              <p className="mb-3 text-lg text-ink/45">
+                <T en="Last 30 days · 12,480 parcels" ar="آخر 30 يومًا · 12,480 طردًا" />
+              </p>
+              <div className="space-y-3">
                 {speed.map((s, i) => (
                   <div key={i}>
                     <div className="mb-1.5 flex justify-between text-lg">
-                      <span className="font-semibold text-ink/80">{s.day} · {s.note}</span>
+                      <span className="font-semibold text-ink/80">
+                        <T en={`${s.day.en} · ${s.note.en}`} ar={`${s.day.ar} · ${s.note.ar}`} />
+                      </span>
                       <span className="font-extrabold text-accent-ink">{s.pct}%</span>
                     </div>
                     <div className="h-3 overflow-hidden rounded-full bg-ink/10">
@@ -729,12 +1082,16 @@ function DashboardSection() {
               </div>
             </div>
             {/* Top wilayas */}
-            <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] p-6">
-              <p className="mb-4 text-xl font-bold text-ink">Top wilayas</p>
-              <div className="space-y-3">
+            <div className="rounded-2xl border border-ink/10 bg-ink/[0.03] p-5">
+              <p className="mb-3 text-xl font-bold text-ink">
+                <T en="Top wilayas" ar="أهم الولايات" />
+              </p>
+              <div className="space-y-2.5">
                 {wilayas.map((w, i) => (
                   <div key={i} className="flex items-center gap-4">
-                    <span className="w-28 text-lg font-semibold text-ink/80">{w.name}</span>
+                    <span className="w-28 text-lg font-semibold text-ink/80">
+                      <T en={w.name.en} ar={w.name.ar} />
+                    </span>
                     <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-ink/10">
                       <div className="animate-bar-grow h-full rounded-full bg-[#6366f1]" style={{ width: `${w.pct}%`, animationDelay: `${0.4 + i * 0.1}s` }} />
                     </div>
@@ -747,14 +1104,30 @@ function DashboardSection() {
         </div>
 
         {/* Live activity ticker */}
-        <div className="flex items-center gap-3 border-t border-ink/10 bg-[#6366f1]/[0.06] px-8 py-4">
+        <div className="flex items-center gap-3 border-t border-ink/10 bg-[#6366f1]/[0.06] px-8 py-3">
           <span className="h-3 w-3 flex-shrink-0 rounded-full bg-emerald-400" style={{ animation: "live-ping 2s infinite" }} />
           <span className="text-xl font-medium text-ink/75">
-            Parcel <span className="font-bold text-accent-ink">CT-90412</span> delivered — Alger · confirmation SMS sent &nbsp;·&nbsp; Retargeting re-engaged <span className="font-bold text-accent-ink">214</span> no-answer customers this week
+            <T
+              en={
+                <>
+                  Parcel <span className="font-bold text-accent-ink">CT-90412</span> delivered — Alger · confirmation SMS
+                  sent &nbsp;·&nbsp; Retargeting re-engaged <span className="font-bold text-accent-ink">214</span>{" "}
+                  no-answer customers this week
+                </>
+              }
+              ar={
+                <>
+                  الطرد <span className="font-bold text-accent-ink">CT-90412</span> تمّ تسليمه — الجزائر · أُرسل SMS
+                  التأكيد &nbsp;·&nbsp; أعادت إعادة الاستهداف التواصل مع{" "}
+                  <span className="font-bold text-accent-ink">214</span> زبونًا غير مجيب هذا الأسبوع
+                </>
+              }
+            />
           </span>
         </div>
       </div>
-    </div>
+      </div>
+    </FitToViewport>
   )
 }
 
@@ -766,18 +1139,30 @@ function KeyNumbersSection() {
     <div className="animate-fade-in-up w-full max-w-7xl space-y-14">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>Live SMS activity</Eyebrow>
+          <Eyebrow>
+            <T en="Live SMS activity" ar="نشاط SMS مباشر" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Numbers that keep <span className="text-gradient accent-serif">moving.</span>
+          <Typewriter
+            en="Numbers that keep moving."
+            ar="أرقام لا تتوقّف عن التحرّك."
+            accentEn="moving."
+            accentAr="التحرّك."
+          />
         </h2>
-        <p className="text-2xl text-ink/55">Created by online sellers, for online sellers.</p>
+        <p className="text-2xl text-ink/55">
+          <T
+            en="Created by online sellers, for online sellers."
+            ar="صُنعت من بائعين على الإنترنت، لبائعين على الإنترنت."
+          />
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-8 lg:grid-cols-4">
-        <StatCard icon={Send} value={11257} suffix="+" label="SMS sent today" live highlight={false} />
-        <StatCard icon={MessageSquare} value={5} suffix="M+" label="Total SMS sent" highlight />
-        <StatCard icon={ShieldCheck} value={100} suffix="%" label="SMS delivery rate" />
-        <StatCard icon={Users} value={2000} suffix="+" label="Partner stores" />
+        <StatCard icon={Send} value={11257} suffix="+" label={<T en="SMS sent today" ar="SMS أُرسلت اليوم" />} live highlight={false} />
+        <StatCard icon={MessageSquare} value={5} suffix="M+" label={<T en="Total SMS sent" ar="إجمالي SMS المُرسلة" />} highlight />
+        <StatCard icon={ShieldCheck} value={100} suffix="%" label={<T en="SMS delivery rate" ar="نسبة تسليم SMS" />} />
+        <StatCard icon={Users} value={2000} suffix="+" label={<T en="Partner stores" ar="متاجر شريكة" />} />
       </div>
     </div>
   )
@@ -794,7 +1179,7 @@ function StatCard({
   icon: any
   value: number
   suffix: string
-  label: string
+  label: React.ReactNode
   live?: boolean
   highlight?: boolean
 }) {
@@ -847,19 +1232,54 @@ function StatCard({
 /* ================================================================== */
 function FeaturesSection() {
   const features = [
-    { icon: Link2, title: "Auto Tracking Link", body: "An automated tracking link so customers monitor delivery status right from their phone." },
-    { icon: Bell, title: "Personalized SMS", body: "Tailored alerts with order details, shipping updates and delivery schedules." },
-    { icon: Megaphone, title: "SMS Retargeting", body: "Re-engage no-answer and abandoned-cart customers with timely, targeted campaigns." },
-    { icon: BadgeCheck, title: "Custom Sender ID", body: "Send with your brand's name so customers instantly recognise every message." },
+    {
+      icon: Link2,
+      title: { en: "Auto Tracking Link", ar: "رابط تتبّع آلي" },
+      body: {
+        en: "An automated tracking link so customers monitor delivery status right from their phone.",
+        ar: "رابط تتبّع آلي يتابع به الزبائن حالة التوصيل مباشرة من هواتفهم.",
+      },
+    },
+    {
+      icon: Bell,
+      title: { en: "Personalized SMS", ar: "رسائل SMS مخصّصة" },
+      body: {
+        en: "Tailored alerts with order details, shipping updates and delivery schedules.",
+        ar: "تنبيهات مخصّصة بتفاصيل الطلب وتحديثات الشحن ومواعيد التسليم.",
+      },
+    },
+    {
+      icon: Megaphone,
+      title: { en: "SMS Retargeting", ar: "إعادة استهداف عبر SMS" },
+      body: {
+        en: "Re-engage no-answer and abandoned-cart customers with timely, targeted campaigns.",
+        ar: "أعد التواصل مع غير المجيبين وأصحاب السلال المتروكة بحملات دقيقة وفي وقتها.",
+      },
+    },
+    {
+      icon: BadgeCheck,
+      title: { en: "Custom Sender ID", ar: "معرّف مُرسِل مخصّص" },
+      body: {
+        en: "Send with your brand's name so customers instantly recognise every message.",
+        ar: "أرسل باسم علامتك التجارية ليتعرّف الزبائن على كل رسالة فورًا.",
+      },
+    },
   ]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-12">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>Advanced features</Eyebrow>
+          <Eyebrow>
+            <T en="Advanced features" ar="ميزات متقدّمة" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Everything you need to <span className="text-gradient accent-serif">scale.</span>
+          <Typewriter
+            en="Everything you need to scale."
+            ar="كل ما تحتاجه لتنمو."
+            accentEn="scale."
+            accentAr="لتنمو."
+          />
         </h2>
       </div>
       <div className="grid gap-7 md:grid-cols-2">
@@ -873,8 +1293,12 @@ function FeaturesSection() {
               <f.icon className="h-10 w-10 text-white" />
             </div>
             <div className="space-y-2">
-              <h3 className="text-3xl font-extrabold text-ink">{f.title}</h3>
-              <p className="text-2xl leading-relaxed text-ink/65">{f.body}</p>
+              <h3 className="text-3xl font-extrabold text-ink">
+                <T en={f.title.en} ar={f.title.ar} />
+              </h3>
+              <p className="text-2xl leading-relaxed text-ink/65">
+                <T en={f.body.en} ar={f.body.ar} />
+              </p>
             </div>
           </div>
         ))}
@@ -888,17 +1312,36 @@ function FeaturesSection() {
 /* ================================================================== */
 function ResultsSection() {
   const cases = [
-    { before: "High volume of inquiries", after: "50% fewer inquiries", problem: "Lack of real-time updates", solution: "Automated SMS order-status alerts", icon: MessageSquare },
-    { before: "Losing monthly customers", after: "+30% customer retention", problem: "Low customer retention", solution: "SMS retargeting campaigns", icon: Target },
+    {
+      before: { en: "High volume of inquiries", ar: "حجم استفسارات مرتفع" },
+      after: { en: "50% fewer inquiries", ar: "استفسارات أقل بنسبة 50%" },
+      problem: { en: "Lack of real-time updates", ar: "غياب التحديثات الفورية" },
+      solution: { en: "Automated SMS order-status alerts", ar: "تنبيهات آلية بحالة الطلب عبر SMS" },
+      icon: MessageSquare,
+    },
+    {
+      before: { en: "Losing monthly customers", ar: "فقدان زبائن كل شهر" },
+      after: { en: "+30% customer retention", ar: "+30% في الاحتفاظ بالزبائن" },
+      problem: { en: "Low customer retention", ar: "ضعف الاحتفاظ بالزبائن" },
+      solution: { en: "SMS retargeting campaigns", ar: "حملات إعادة استهداف عبر SMS" },
+      icon: Target,
+    },
   ]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-12">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>Real results</Eyebrow>
+          <Eyebrow>
+            <T en="Real results" ar="نتائج حقيقية" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          From a problem to <span className="text-gradient accent-serif">a fix.</span>
+          <Typewriter
+            en="From a problem to a fix."
+            ar="من مشكلة إلى حل."
+            accentEn="a fix."
+            accentAr="حل."
+          />
         </h2>
       </div>
       <div className="grid gap-8 md:grid-cols-2">
@@ -906,11 +1349,11 @@ function ResultsSection() {
           <div key={i} className="glass-strong animate-fade-in-up space-y-7 rounded-3xl p-10" style={{ animationDelay: `${i * 0.15}s` }}>
             <div className="flex items-center gap-4">
               <span className="rounded-full bg-rose-500/10 px-4 py-2 text-xl font-semibold text-[var(--neg-text)] line-through decoration-rose-400/60">
-                {c.before}
+                <T en={c.before.en} ar={c.before.ar} />
               </span>
-              <ArrowRight className="h-7 w-7 text-ink/40" />
+              <ArrowRight className="flip-rtl h-7 w-7 text-ink/40" />
               <span className="rounded-full bg-emerald-400/10 px-4 py-2 text-xl font-extrabold text-[var(--pos-text)]">
-                {c.after}
+                <T en={c.after.en} ar={c.after.ar} />
               </span>
             </div>
             <div className="flex items-center gap-5">
@@ -918,13 +1361,21 @@ function ResultsSection() {
                 <c.icon className="h-8 w-8 text-accent-ink" />
               </div>
               <div>
-                <p className="text-lg uppercase tracking-widest text-ink/40">The problem</p>
-                <p className="text-2xl font-bold text-ink">{c.problem}</p>
+                <p className="text-lg uppercase tracking-widest text-ink/40">
+                  <T en="The problem" ar="المشكلة" />
+                </p>
+                <p className="text-2xl font-bold text-ink">
+                  <T en={c.problem.en} ar={c.problem.ar} />
+                </p>
               </div>
             </div>
             <div className="rounded-2xl border border-[#6366f1]/30 bg-[#6366f1]/[0.08] p-6">
-              <p className="text-lg uppercase tracking-widest text-accent-ink">Our solution</p>
-              <p className="text-2xl font-extrabold text-ink">{c.solution}</p>
+              <p className="text-lg uppercase tracking-widest text-accent-ink">
+                <T en="Our solution" ar="حلّنا" />
+              </p>
+              <p className="text-2xl font-extrabold text-ink">
+                <T en={c.solution.en} ar={c.solution.ar} />
+              </p>
             </div>
           </div>
         ))}
@@ -937,30 +1388,49 @@ function ResultsSection() {
 /*  9 · PARTNERS / INTEGRATIONS                                        */
 /* ================================================================== */
 function PartnersSection() {
-  const partners = ["Yalidine", "Noest", "ZR Express", "Maystro", "DHD", "Anderson", "EcoManager"]
+  const partners = [
+    { name: "Yalidine", logo: "/partners/yalidine.png" },
+    { name: "Noest", logo: "/partners/noest.png" },
+    { name: "ZR Express", logo: "/partners/zrexpress.png" },
+    { name: "Maystro Delivery", logo: "/partners/maystro.svg" },
+    { name: "DHD", logo: "/partners/dhd.png" },
+    { name: "Anderson Logistique", logo: "/partners/anderson.png" },
+  ]
   const row = [...partners, ...partners]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-12 text-center">
       <div className="space-y-5">
         <div className="flex justify-center">
-          <Eyebrow>Trusted integrations</Eyebrow>
+          <Eyebrow>
+            <T en="Trusted integrations" ar="تكاملات موثوقة" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Connects with every <span className="text-gradient accent-serif">delivery company.</span>
+          <Typewriter
+            en="Connects with every delivery company."
+            ar="يتكامل مع كل شركات التوصيل."
+            accentEn="delivery company."
+            accentAr="شركات التوصيل."
+          />
         </h2>
-        <p className="text-2xl text-ink/55">One click to sync your parcels — no dashboards to babysit.</p>
+        <p className="text-2xl text-ink/55">
+          <T
+            en="One click to sync your parcels — no dashboards to babysit."
+            ar="نقرة واحدة لمزامنة طرودك — دون لوحات تحكّم تراقبها."
+          />
+        </p>
       </div>
 
       <div className="relative overflow-hidden py-4">
         <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-40 bg-gradient-to-r from-[var(--page-base)] to-transparent" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-40 bg-gradient-to-l from-[var(--page-base)] to-transparent" />
-        <div className="animate-marquee flex w-max gap-8">
+        <div className="animate-marquee flex w-max gap-7">
           {row.map((p, i) => (
-            <div key={i} className="glass-strong flex min-w-[280px] items-center gap-5 rounded-2xl px-10 py-8 neon-border">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#6366f1]/15 ring-1 ring-[#6366f1]/40">
-                <Truck className="h-7 w-7 text-accent-ink" />
-              </div>
-              <span className="text-3xl font-extrabold text-ink">{p}</span>
+            <div
+              key={i}
+              className="flex h-32 min-w-[260px] items-center justify-center rounded-3xl bg-white px-10 shadow-[0_16px_40px_-18px_rgba(0,0,0,0.55)] ring-1 ring-black/5"
+            >
+              <img src={p.logo} alt={p.name} className="max-h-16 max-w-[184px] object-contain" />
             </div>
           ))}
         </div>
@@ -968,7 +1438,18 @@ function PartnersSection() {
 
       <div className="flex items-center justify-center gap-3 text-2xl font-semibold text-ink/60">
         <Users className="h-8 w-8 text-accent-ink" />
-        Powering <span className="font-extrabold text-ink">2,000+</span> partner stores across Algeria
+        <T
+          en={
+            <>
+              Powering <span className="font-extrabold text-ink">2,000+</span> partner stores across Algeria
+            </>
+          }
+          ar={
+            <>
+              يشغّل أكثر من <span className="font-extrabold text-ink">2,000</span> متجر شريك عبر الجزائر
+            </>
+          }
+        />
       </div>
     </div>
   )
@@ -978,19 +1459,33 @@ function PartnersSection() {
 /*  10 · PRICING                                                       */
 /* ================================================================== */
 function PricingSection() {
+  const P = {
+    notif: { en: "SMS Notifications", ar: "إشعارات SMS" },
+    track: { en: "Real-time Tracking Link", ar: "رابط تتبّع فوري" },
+    retarget: { en: "SMS Retargeting", ar: "إعادة استهداف عبر SMS" },
+    bonus: { en: "+5% Bonus Tokens FREE", ar: "+5% رصيد إضافي مجانًا" },
+    sender: { en: "Custom Sender ID", ar: "معرّف مُرسِل مخصّص" },
+  }
   const plans = [
-    { name: "Starter", price: "$10.99", tokens: "2,400", popular: false, perks: ["SMS Notifications", "Real-time Tracking Link", "SMS Retargeting"] },
-    { name: "Enterprise", price: "$100", tokens: "25,200", popular: true, perks: ["+5% Bonus Tokens FREE", "Custom Sender ID", "SMS Retargeting"] },
-    { name: "Business", price: "$80", tokens: "19,200", popular: false, perks: ["SMS Notifications", "Custom Sender ID", "SMS Retargeting"] },
+    { name: "Starter", price: "$10.99", tokens: "2,400", popular: false, perks: [P.notif, P.track, P.retarget] },
+    { name: "Enterprise", price: "$100", tokens: "25,200", popular: true, perks: [P.bonus, P.sender, P.retarget] },
+    { name: "Business", price: "$80", tokens: "19,200", popular: false, perks: [P.notif, P.sender, P.retarget] },
   ]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-12">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>Simple pricing</Eyebrow>
+          <Eyebrow>
+            <T en="Simple pricing" ar="أسعار بسيطة" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Pay once. <span className="text-gradient accent-serif">Tokens never expire.</span>
+          <Typewriter
+            en="Pay once. Tokens never expire."
+            ar="ادفع مرّة واحدة. رصيدك لا ينتهي أبدًا."
+            accentEn="Tokens never expire."
+            accentAr="رصيدك لا ينتهي أبدًا."
+          />
         </h2>
       </div>
       <div className="grid items-center gap-7 md:grid-cols-3">
@@ -1007,35 +1502,41 @@ function PricingSection() {
           >
             {p.popular && (
               <span className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#a5b4fc] px-5 py-1.5 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg">
-                Most Popular
+                <T en="Most Popular" ar="الأكثر رواجًا" />
               </span>
             )}
             <div>
               <p className="text-2xl font-bold text-ink/70">{p.name}</p>
               <p className="mt-2 flex items-baseline gap-2">
                 <span className="text-6xl font-extrabold text-ink">{p.price}</span>
-                <span className="text-xl text-ink/45">/ one-time</span>
+                <span className="text-xl text-ink/45">
+                  <T en="/ one-time" ar="/ مرّة واحدة" />
+                </span>
               </p>
-              <p className="mt-2 text-2xl font-bold text-accent-ink">{p.tokens} Tokens</p>
+              <p className="mt-2 text-2xl font-bold text-accent-ink">
+                {p.tokens} <T en="Tokens" ar="رصيد" />
+              </p>
             </div>
             <div className="space-y-3">
               {p.perks.map((perk, j) => (
                 <div key={j} className="flex items-center gap-3">
                   <CheckCircle2 className="h-6 w-6 flex-shrink-0 text-accent-ink" />
-                  <span className="text-xl font-medium text-ink/80">{perk}</span>
+                  <span className="text-xl font-medium text-ink/80">
+                    <T en={perk.en} ar={perk.ar} />
+                  </span>
                 </div>
               ))}
             </div>
             <div className={`mt-auto rounded-xl py-4 text-center text-xl font-extrabold ${p.popular ? "btn-pop" : "btn-solid"}`}>
-              Get Started
+              <T en="Get Started" ar="ابدأ الآن" />
             </div>
           </div>
         ))}
       </div>
       <div className="flex flex-wrap items-center justify-center gap-10 text-xl font-semibold text-ink/55">
-        <span className="flex items-center gap-2"><Wallet className="h-6 w-6 text-accent-ink" /> Instant token credit</span>
-        <span className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-accent-ink" /> 99.9% uptime</span>
-        <span className="flex items-center gap-2"><Sparkles className="h-6 w-6 text-accent-ink" /> Tokens never expire</span>
+        <span className="flex items-center gap-2"><Wallet className="h-6 w-6 text-accent-ink" /> <T en="Instant token credit" ar="شحن رصيد فوري" /></span>
+        <span className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-accent-ink" /> <T en="99.9% uptime" ar="توفّر بنسبة 99.9%" /></span>
+        <span className="flex items-center gap-2"><Sparkles className="h-6 w-6 text-accent-ink" /> <T en="Tokens never expire" ar="الرصيد لا ينتهي أبدًا" /></span>
       </div>
     </div>
   )
@@ -1046,18 +1547,46 @@ function PricingSection() {
 /* ================================================================== */
 function TestimonialsSection() {
   const reviews = [
-    { quote: "Colitrack transformed how we handle order communications. Customer satisfaction is up 45% since we switched on SMS automation.", name: "Walid", role: "E-commerce Manager · GRIFA SHOP" },
-    { quote: "The automated tracking updates cut our support workload. It's like having an extra team member handling every shipping message.", name: "Salah Eddine", role: "Manager · SABY ANGE" },
-    { quote: "As a small business, Colitrack was a game-changer. Tracking links and automated SMS gave us an enterprise-level experience.", name: "Ben Youcef", role: "Founder · BRUSH MASTER" },
+    {
+      quote: {
+        en: "Colitrack transformed how we handle order communications. Customer satisfaction is up 45% since we switched on SMS automation.",
+        ar: "غيّر Colitrack طريقة تعاملنا مع مراسلات الطلبات. ارتفع رضا الزبائن بنسبة 45% منذ أن فعّلنا أتمتة SMS.",
+      },
+      name: { en: "Walid", ar: "وليد" },
+      role: { en: "E-commerce Manager · GRIFA SHOP", ar: "مدير التجارة الإلكترونية · GRIFA SHOP" },
+    },
+    {
+      quote: {
+        en: "The automated tracking updates cut our support workload. It's like having an extra team member handling every shipping message.",
+        ar: "قلّصت تحديثات التتبّع الآلية عبء الدعم لدينا. الأمر أشبه بعضو فريق إضافي يتولّى كل رسالة شحن.",
+      },
+      name: { en: "Salah Eddine", ar: "صلاح الدين" },
+      role: { en: "Manager · SABY ANGE", ar: "مدير · SABY ANGE" },
+    },
+    {
+      quote: {
+        en: "As a small business, Colitrack was a game-changer. Tracking links and automated SMS gave us an enterprise-level experience.",
+        ar: "كمشروع صغير، كان Colitrack نقلة نوعية. منحتنا روابط التتبّع ورسائل SMS الآلية تجربة بمستوى الشركات الكبرى.",
+      },
+      name: { en: "Ben Youcef", ar: "بن يوسف" },
+      role: { en: "Founder · BRUSH MASTER", ar: "مؤسّس · BRUSH MASTER" },
+    },
   ]
   return (
     <div className="animate-fade-in-up w-full max-w-7xl space-y-12">
       <div className="space-y-5 text-center">
         <div className="flex justify-center">
-          <Eyebrow>Loved by stores</Eyebrow>
+          <Eyebrow>
+            <T en="Loved by stores" ar="محبوب من المتاجر" />
+          </Eyebrow>
         </div>
         <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-          Trusted by growing <span className="text-gradient accent-serif">e-commerce brands.</span>
+          <Typewriter
+            en="Trusted by growing e-commerce brands."
+            ar="موثوق من علامات التجارة الإلكترونية النامية."
+            accentEn="e-commerce brands."
+            accentAr="التجارة الإلكترونية النامية."
+          />
         </h2>
       </div>
       <div className="grid gap-7 md:grid-cols-3">
@@ -1068,14 +1597,20 @@ function TestimonialsSection() {
                 <Star key={s} className="h-7 w-7 fill-accent-ink text-accent-ink" />
               ))}
             </div>
-            <p className="flex-1 text-2xl leading-relaxed text-ink/85">“{r.quote}”</p>
+            <p className="flex-1 text-2xl leading-relaxed text-ink/85">
+              “<T en={r.quote.en} ar={r.quote.ar} />”
+            </p>
             <div className="flex items-center gap-4 border-t border-ink/10 pt-5">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#a5b4fc] text-2xl font-extrabold text-white">
-                {r.name.charAt(0)}
+                {r.name.en.charAt(0)}
               </div>
               <div>
-                <p className="text-2xl font-extrabold text-ink">{r.name}</p>
-                <p className="text-lg text-ink/50">{r.role}</p>
+                <p className="text-2xl font-extrabold text-ink">
+                  <T en={r.name.en} ar={r.name.ar} />
+                </p>
+                <p className="text-lg text-ink/50">
+                  <T en={r.role.en} ar={r.role.ar} />
+                </p>
               </div>
             </div>
           </div>
@@ -1100,14 +1635,26 @@ function SpecialOfferSection() {
             </div>
           </div>
           <div className="flex justify-center">
-            <Eyebrow>ECSEL EXPO 2026 · 5th edition</Eyebrow>
+            <Eyebrow>
+              <T en="ECSEL EXPO 2026 · 5th edition" ar="ECSEL EXPO 2026 · النسخة الخامسة" />
+            </Eyebrow>
           </div>
           <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
-            Get <span className="text-gradient accent-serif">1200 DA free</span> today.
+            <Typewriter
+              en="Get 1200 DA free today."
+              ar="احصل على 1200 دج مجانًا اليوم."
+              accentEn="1200 DA free"
+              accentAr="1200 دج مجانًا"
+            />
           </h2>
-          <p className="text-3xl font-light text-ink/70">Visit our stand and start automating your SMS with this promo code:</p>
+          <p className="text-3xl font-light text-ink/70">
+            <T
+              en="Visit our stand and start automating your SMS with this promo code:"
+              ar="زُر جناحنا وابدأ أتمتة رسائلك مع رمز العرض هذا:"
+            />
+          </p>
           <div className="sheen inline-block rounded-2xl border-2 border-dashed border-[#6366f1]/60 bg-[#6366f1]/10 px-14 py-7">
-            <p className="font-mono text-6xl font-extrabold tracking-[0.15em] text-ink lg:text-7xl">EXELEXPO2026</p>
+            <p className="font-mono text-6xl font-extrabold tracking-[0.15em] text-ink lg:text-7xl">ECSEL2026</p>
           </div>
         </div>
       </div>
@@ -1123,19 +1670,28 @@ function CTASection() {
     <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-11 text-center">
       <Logo size="xl" />
       <h2 className="text-balance text-7xl font-bold leading-[1.06] tracking-[-0.02em] text-ink lg:text-8xl">
-        Ready to <span className="text-gradient accent-serif font-normal">transform</span> your store?
+        <Typewriter
+          en="Ready to transform your store?"
+          ar="هل أنت جاهز لتحويل متجرك؟"
+          accentEn="transform"
+          accentAr="لتحويل"
+          accentClassName="text-gradient accent-serif font-normal"
+        />
       </h2>
       <p className="max-w-3xl text-balance text-3xl font-light text-ink/60">
-        Join thousands of businesses automating their SMS &amp; order tracking with Colitrack.
+        <T
+          en="Join thousands of businesses automating their SMS & order tracking with Colitrack."
+          ar="انضمّ إلى آلاف الأنشطة التي تُؤتمت رسائلها وتتبّع طلباتها مع Colitrack."
+        />
       </p>
       <div className="glass-strong inline-flex items-center gap-5 rounded-full px-16 py-7 neon-border">
         <Globe className="h-11 w-11 text-accent-ink" />
         <p className="text-6xl font-bold tracking-tight text-gradient">colitrack.io</p>
       </div>
       <div className="flex items-center gap-5 text-xl font-medium text-ink/55 lg:text-2xl">
-        <span className="flex items-center gap-2.5"><Play className="h-5 w-5 fill-accent-ink text-accent-ink" /> Try the live demo</span>
+        <span className="flex items-center gap-2.5"><Play className="h-5 w-5 fill-accent-ink text-accent-ink" /> <T en="Try the live demo" ar="جرّب العرض المباشر" /></span>
         <span className="h-1 w-1 rounded-full bg-ink/25" />
-        <span>Built for Algeria 🇩🇿</span>
+        <span><T en="Built for Algeria 🇩🇿" ar="مصمّم للجزائر 🇩🇿" /></span>
       </div>
     </div>
   )
