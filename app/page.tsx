@@ -1413,56 +1413,140 @@ function ResultsSection() {
 /*  9 · PARTNERS / INTEGRATIONS                                        */
 /* ================================================================== */
 function PartnersSection() {
-  const partners = [
-    { name: "Yalidine", logo: "/partners/yalidine.png" },
-    { name: "Noest", logo: "/partners/noest.png" },
-    { name: "ZR Express", logo: "/partners/zrexpress.png" },
-    { name: "Maystro Delivery", logo: "/partners/maystro.svg" },
-    { name: "DHD", logo: "/partners/dhd.png" },
-    { name: "Anderson Logistique", logo: "/partners/anderson.png" },
+  // A partner with a real logo file renders the image; the rest render a clean
+  // typographic wordmark on the white card. Companies are split into three
+  // groups by how they relate to Colitrack.
+  type Co = { name: string; logo?: string; mark?: React.ReactNode }
+
+  // Imir Logistics, redrawn from the brand mark: red speech-bubble with a white
+  // up-arrow + navy "imir / Logistics". Swap for the exact file if provided.
+  const imirMark = (
+    <span className="inline-flex items-center gap-2">
+      <svg width="34" height="38" viewBox="0 0 36 40" fill="none" aria-hidden="true">
+        <path
+          d="M9 3h20a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6H15c-1 5-4 8-9 9 3-3 4-6 4-9H9a6 6 0 0 1-6-6V9a6 6 0 0 1 6-6z"
+          fill="#e6394a"
+        />
+        <path
+          d="M10 25c1.6-6.5 6.6-10.5 15.6-11.5"
+          stroke="#fff"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M21 10.4l6.6-1.2-1.7 6.5z" fill="#fff" />
+      </svg>
+      <span className="flex flex-col items-start leading-none">
+        <span className="text-[1.85rem] font-black tracking-tight text-[#16234a]">imir</span>
+        <span className="mt-0.5 text-[0.62rem] font-medium tracking-[0.22em] text-[#16234a]/85">Logistics</span>
+      </span>
+    </span>
+  )
+  // Interim wordmark in World Express's brand colors (blue "WORLD" / red
+  // "EXPRESS") — swap for the circular courier badge when the file is on hand.
+  const worldExpressMark = (
+    <span className="text-[1.35rem] font-black leading-none tracking-tight">
+      <span className="text-[#1d4ed8]">WORLD</span> <span className="text-[#dc2626]">EXPRESS</span>
+    </span>
+  )
+  // Smart Sellers Summit "SS" monogram, redrawn crisp (blue + green) from the
+  // brand mark — swap for the exact file if a higher-fidelity one is provided.
+  const smartSellersMark = (
+    <span className="inline-flex flex-col items-center gap-1.5">
+      <span className="inline-flex items-center italic leading-none">
+        <span className="text-[2.4rem] font-black text-[#2563eb]">S</span>
+        <span className="-ml-[0.5rem] text-[2.4rem] font-black text-[#16a34a]">S</span>
+      </span>
+      <span className="text-center text-[0.5rem] font-bold uppercase leading-tight tracking-[0.15em] text-[#334155]">
+        Smart Sellers
+        <br />
+        Summit
+      </span>
+    </span>
+  )
+
+  const groups: { label: { en: string; ar: string }; items: Co[] }[] = [
+    {
+      label: { en: "Delivery — powered by Colitrack", ar: "توصيل — يعمل بكولي تراك" },
+      items: [
+        { name: "RedEx Delivery", logo: "/partners/redex.png" },
+        { name: "Ecotrack", logo: "/partners/ecotrack.png" },
+        { name: "DHD", logo: "/partners/dhd.png" },
+        { name: "Anderson Logistique", logo: "/partners/anderson.png" },
+        { name: "Imir Logistics", mark: imirMark },
+        { name: "World Express", mark: worldExpressMark },
+      ],
+    },
+    {
+      label: { en: "Delivery — integrated via API", ar: "توصيل — مدمج عبر API" },
+      items: [
+        { name: "Yalidine", logo: "/partners/yalidine.png" },
+        { name: "Noest", logo: "/partners/noest.png" },
+        { name: "ZR Express", logo: "/partners/zrexpress.png" },
+        { name: "Maystro Delivery", logo: "/partners/maystro.svg" },
+      ],
+    },
+    {
+      label: { en: "Used our SMS retargeting", ar: "استخدموا SMS لإعادة الاستهداف" },
+      items: [
+        { name: "Webscale", logo: "/partners/webscale.png" },
+        { name: "Ecomanager", logo: "/partners/ecomanager.png" },
+        { name: "Smart Sellers Summit", mark: smartSellersMark },
+      ],
+    },
   ]
-  const row = [...partners, ...partners]
   return (
-    <div className="animate-fade-in-up w-full max-w-7xl space-y-12 text-center">
-      <div className="space-y-5">
+    <div className="animate-fade-in-up w-full max-w-7xl space-y-8 text-center">
+      <div className="space-y-4">
         <div className="flex justify-center">
           <Eyebrow>
-            <T en="Trusted integrations" ar="تكاملات موثوقة" />
+            <T en="Partners & clients" ar="شركاء وعملاء" />
           </Eyebrow>
         </div>
-        <h2 className="text-balance text-6xl font-extrabold text-ink lg:text-7xl">
+        <h2 className="text-balance text-5xl font-extrabold text-ink lg:text-6xl">
           <Typewriter
-            en="Connects with every delivery company."
-            ar="يتكامل مع كل شركات التوصيل."
-            accentEn="delivery company."
-            accentAr="شركات التوصيل."
+            en="Trusted across Algeria's e-commerce."
+            ar="موثوق عبر التجارة الإلكترونية في الجزائر."
+            accentEn="e-commerce."
+            accentAr="التجارة الإلكترونية"
           />
         </h2>
-        <p className="text-2xl text-ink/55">
-          <T
-            en="One click to sync your parcels — no dashboards to babysit."
-            ar="نقرة واحدة لمزامنة طرودك — دون لوحات تحكّم تراقبها."
-          />
-        </p>
       </div>
 
-      <div className="relative overflow-hidden py-4">
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-40 bg-gradient-to-r from-[var(--page-base)] to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-40 bg-gradient-to-l from-[var(--page-base)] to-transparent" />
-        <div className="animate-marquee flex w-max gap-7">
-          {row.map((p, i) => (
-            <div
-              key={i}
-              className="flex h-32 min-w-[260px] items-center justify-center rounded-3xl bg-white px-10 shadow-[0_16px_40px_-18px_rgba(0,0,0,0.55)] ring-1 ring-black/5"
-            >
-              <img src={p.logo} alt={p.name} className="max-h-16 max-w-[184px] object-contain" />
+      {/* Three labeled groups — each card fades in, then the kiosk's slide
+          timer advances to the next tab. */}
+      <div className="space-y-7">
+        {groups.map((g, gi) => (
+          <div key={gi} className="space-y-4">
+            <div className="flex items-center justify-center gap-3">
+              <span className="h-px w-8 bg-accent-ink/30" />
+              <span className="text-sm font-bold uppercase tracking-[0.24em] text-accent-ink lg:text-[0.95rem]">
+                <T en={g.label.en} ar={g.label.ar} />
+              </span>
+              <span className="h-px w-8 bg-accent-ink/30" />
             </div>
-          ))}
-        </div>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              {g.items.map((p, i) => (
+                <div
+                  key={i}
+                  className="animate-fade-in-up flex h-[86px] w-[184px] items-center justify-center rounded-2xl bg-white px-6 shadow-[0_14px_34px_-16px_rgba(0,0,0,0.55)] ring-1 ring-black/5"
+                  style={{ animationDelay: `${gi * 0.14 + i * 0.07}s` }}
+                >
+                  {p.logo ? (
+                    <img src={p.logo} alt={p.name} className="max-h-12 max-w-[136px] object-contain" />
+                  ) : (
+                    <span dir="ltr">{p.mark}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="flex items-center justify-center gap-3 text-2xl font-semibold text-ink/60">
-        <Users className="h-8 w-8 text-accent-ink" />
+      <div className="flex items-center justify-center gap-3 text-xl font-semibold text-ink/60">
+        <Users className="h-7 w-7 text-accent-ink" />
         <T
           en={
             <>
