@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   Wallet,
   PackageCheck,
+  QrCode,
   Globe,
   Play,
   Wifi,
@@ -259,11 +260,15 @@ export default function ExhibitionScreen() {
 /* ================================================================== */
 /*  BRAND LOGO — faithful reproduction of the colitrack.io mark        */
 /* ================================================================== */
-function Logo({ size = "md" }: { size?: "md" | "xl" }) {
+function Logo({ size = "md", localize = false }: { size?: "md" | "xl"; localize?: boolean }) {
+  // On the intro & closing slides we localize the wordmark itself in the Arabic
+  // pass; the header brand (rendered outside the language context) stays Latin.
+  const lang = useLang()
+  const arabic = localize && lang === "ar"
   const mark = size === "xl" ? "h-24 w-24 rounded-3xl text-6xl" : "h-14 w-14 rounded-2xl text-3xl"
   const word = size === "xl" ? "text-7xl" : "text-4xl"
   return (
-    <div dir="ltr" className="flex flex-col gap-1.5">
+    <div dir={arabic ? "rtl" : "ltr"} className="flex flex-col gap-1.5">
       <div className="flex items-center gap-4">
         <div
           className={`flex ${mark} items-center justify-center font-extrabold text-white shadow-[0_10px_28px_-10px_rgba(99,102,241,0.9)]`}
@@ -272,8 +277,11 @@ function Logo({ size = "md" }: { size?: "md" | "xl" }) {
           C
         </div>
         <div className="flex flex-col">
-          <span className={`wordmark font-extrabold leading-none tracking-tight ${word}`}>
-            Colitrack<span style={{ color: "#6366f1", WebkitTextFillColor: "#6366f1" }}>.</span>
+          <span
+            className={`wordmark font-extrabold ${arabic ? "leading-tight tracking-normal" : "leading-none tracking-tight"} ${word}`}
+          >
+            {arabic ? "كولي تراك" : "Colitrack"}
+            <span style={{ color: "#6366f1", WebkitTextFillColor: "#6366f1" }}>.</span>
           </span>
           {/* Parcel route line */}
           <div
@@ -560,7 +568,7 @@ function T({ en, ar }: { en: React.ReactNode; ar: React.ReactNode }) {
 function IntroSection() {
   return (
     <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-11 text-center">
-      <Logo size="xl" />
+      <Logo size="xl" localize />
 
       <div className="space-y-8">
         <h1 className="max-w-5xl text-balance text-6xl font-bold leading-[1.06] tracking-[-0.02em] text-ink lg:text-7xl xl:text-[5.25rem]">
@@ -684,15 +692,22 @@ function VideoSection() {
   // reel paused; on a normal browser it keeps playing muted until tapped.
   const nudgePlay = () => {
     // Subscribe to the player's events so we're notified when the reel ends.
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "listening", id: 1, channel: "widget" }),
-      "*",
-    )
+    // We re-send this a few times: on the *second* time this slide mounts (the
+    // Arabic pass) the player is often not ready to register the listener on the
+    // first post, and a missed subscription means the ENDED event never arrives
+    // and the slide would stall. Retrying makes the subscription stick either way.
+    const subscribe = () =>
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "listening", id: 1, channel: "widget" }),
+        "*",
+      )
+    subscribe()
     let n = 0
     const id = setInterval(() => {
+      subscribe()
       post("playVideo")
-      if (++n >= 4) clearInterval(id)
-    }, 600)
+      if (++n >= 6) clearInterval(id)
+    }, 500)
     setTimeout(() => {
       post("unMute")
       post("setVolume", [100])
@@ -738,7 +753,9 @@ function VideoSection() {
       }
     }
     window.addEventListener("message", onMessage)
-    fallback = setTimeout(finish, 150000) // generous cap until the length is known
+    // Last-resort ceiling until the real length is known — kept short enough that
+    // the kiosk can never stall on this slide even if the player sends nothing.
+    fallback = setTimeout(finish, 60000)
     return () => {
       window.removeEventListener("message", onMessage)
       clearTimeout(fallback)
@@ -1683,7 +1700,7 @@ function SpecialOfferSection() {
 function CTASection() {
   return (
     <div className="animate-fade-in-up flex max-w-6xl flex-col items-center space-y-11 text-center">
-      <Logo size="xl" />
+      <Logo size="xl" localize />
       <h2 className="text-balance text-7xl font-bold leading-[1.06] tracking-[-0.02em] text-ink lg:text-8xl">
         <Typewriter
           en="Ready to transform your store?"
@@ -1699,10 +1716,36 @@ function CTASection() {
           ar="انضمّ إلى آلاف الأنشطة التي تُؤتمت رسائلها وتتبّع طلباتها مع كولي تراك."
         />
       </p>
-      <div className="glass-strong inline-flex items-center gap-5 rounded-full px-16 py-7 neon-border">
-        <Globe className="h-11 w-11 text-accent-ink" />
-        <p className="text-6xl font-bold tracking-tight text-gradient">colitrack.io</p>
+
+      {/* Scan-to-visit: QR card beside the web address */}
+      <div className="flex flex-col items-center gap-8 sm:flex-row sm:gap-11">
+        <div className="relative">
+          <div className="animate-pulse-glow absolute -inset-4 -z-10 rounded-[2.25rem] bg-[#6366f1]/25 blur-2xl" />
+          <div className="rounded-[1.75rem] bg-white p-5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.65)] ring-1 ring-black/5">
+            {/* Points to https://colitrack.io */}
+            <img
+              src="/colitrack-qr.png"
+              alt="QR code — scan to visit colitrack.io"
+              className="h-52 w-52 lg:h-60 lg:w-60"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-4 sm:items-start">
+          <span className="inline-flex items-center gap-2.5 text-xl font-semibold uppercase tracking-[0.22em] text-accent-ink">
+            <QrCode className="h-6 w-6" />
+            <T en="Scan to visit" ar="امسح للزيارة" />
+          </span>
+          <div className="glass-strong inline-flex items-center gap-4 rounded-full px-12 py-6 neon-border">
+            <Globe className="h-10 w-10 text-accent-ink" />
+            <p className="text-5xl font-bold tracking-tight text-gradient lg:text-6xl">colitrack.io</p>
+          </div>
+          <span className="text-xl text-ink/55">
+            <T en="Point your camera to get started" ar="وجّه كاميرتك للبدء" />
+          </span>
+        </div>
       </div>
+
       <div className="flex items-center gap-5 text-xl font-medium text-ink/55 lg:text-2xl">
         <span className="flex items-center gap-2.5"><Play className="h-5 w-5 fill-accent-ink text-accent-ink" /> <T en="Try the live demo" ar="جرّب العرض المباشر" /></span>
         <span className="h-1 w-1 rounded-full bg-ink/25" />
