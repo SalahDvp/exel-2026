@@ -1486,19 +1486,13 @@ function PartnersSection() {
 function PricingSection() {
   // Counts 0 → 10 each time the slide mounts (it remounts per language pass).
   const price = useCountUp(10, 1600)
-  const smsTypes = [
-    { icon: Bell, en: "Order confirmed", ar: "تأكيد الطلب" },
-    { icon: Truck, en: "Out for delivery", ar: "خرج للتوصيل" },
-    { icon: PackageCheck, en: "Delivered", ar: "تمّ التسليم" },
-    { icon: Target, en: "Retargeting", ar: "إعادة استهداف" },
-  ]
   const reassure = [
     { icon: Send, en: "Pay only for what you send", ar: "ادفع فقط لما ترسله" },
-    { icon: ShieldCheck, en: "No delivery, no charge", ar: "بدون تسليم، بدون رسوم" },
     { icon: Wallet, en: "No monthly subscription", ar: "بدون اشتراك شهري" },
+    { icon: ShieldCheck, en: "No hidden fees", ar: "بدون رسوم خفية" },
   ]
   return (
-    <div className="animate-fade-in-up flex w-full max-w-6xl flex-col items-center gap-9 text-center">
+    <div className="animate-fade-in-up flex w-full max-w-6xl flex-col items-center gap-8 text-center">
       <Eyebrow>
         <T en="Simple, honest pricing" ar="تسعير بسيط وصادق" />
       </Eyebrow>
@@ -1512,54 +1506,51 @@ function PricingSection() {
         />
       </h2>
 
-      {/* The price medallion — the whole point of the slide */}
-      <div className="relative mt-3">
-        {/* Soft glow behind the card */}
-        <div className="animate-pulse-glow absolute -inset-6 -z-10 rounded-[3.5rem] bg-[#6366f1]/25 blur-3xl" />
+      {/* The hero offer — a vivid, glowing medallion that dominates the slide */}
+      <div className="relative mt-4">
+        {/* Wide pulsing glow so it pops off the dark ground */}
+        <div className="animate-pulse-glow absolute -inset-10 -z-10 rounded-[4.5rem] bg-[#6366f1]/45 blur-[100px]" />
         {/* Ribbon sits above the card edge, outside the clipped sheen */}
-        <span className="absolute -top-5 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-r from-[#6366f1] to-[#a5b4fc] px-6 py-2 text-lg font-extrabold uppercase tracking-wide text-white shadow-[0_10px_28px_-10px_rgba(99,102,241,0.9)]">
+        <span className="absolute -top-6 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white px-7 py-2.5 text-lg font-extrabold uppercase tracking-wide text-[#4f46e5] shadow-[0_14px_34px_-10px_rgba(0,0,0,0.55)]">
           <Sparkles className="h-4 w-4" />
           <T en="Pay as you go" ar="الدفع حسب الاستخدام" />
         </span>
 
-        <div className="sheen glass-strong neon-border animate-neon-pulse hover-glow rounded-[2.75rem] px-14 pb-11 pt-14 lg:px-20">
-          <p className="text-xl font-semibold uppercase tracking-[0.32em] text-accent-ink">
+        <div
+          className="sheen animate-neon-pulse relative overflow-hidden rounded-[2.75rem] px-16 pb-12 pt-16 shadow-[0_44px_110px_-30px_rgba(79,70,229,0.95)] ring-1 ring-white/25 lg:px-24"
+          style={{ background: "linear-gradient(160deg, #6366f1 0%, #4f46e5 55%, #4338ca 100%)" }}
+        >
+          <p className="text-xl font-bold uppercase tracking-[0.36em] text-white/80">
             <T en="Only" ar="فقط" />
           </p>
-          <div className="mt-1 flex items-end justify-center gap-4" dir="ltr">
-            <span className="text-gradient text-[9rem] font-extrabold leading-[0.82] lg:text-[11rem]">
+          <div className="mt-1 flex items-start justify-center gap-3" dir="ltr">
+            <span className="text-[10rem] font-black leading-[0.78] text-white [text-shadow:0_8px_36px_rgba(0,0,0,0.35)] lg:text-[13rem]">
               {Math.round(price)}
             </span>
-            <span className="mb-5 text-5xl font-extrabold text-ink lg:text-6xl">
+            <span className="mt-6 text-6xl font-extrabold text-white lg:mt-8 lg:text-7xl">
               <T en="DA" ar="دج" />
             </span>
           </div>
-          {/* per SMS — the unit — charged only on delivered parcels */}
-          <p className="mt-1 text-3xl font-extrabold text-accent-ink lg:text-4xl">
-            <T en="per SMS" ar="لكل رسالة" />
-          </p>
-          <div className="mt-4 flex justify-center">
-            <span className="inline-flex items-center gap-2.5 rounded-full bg-[#6366f1]/15 px-6 py-2.5 text-2xl font-bold text-ink ring-1 ring-[#6366f1]/40">
-              <PackageCheck className="h-6 w-6 text-accent-ink" />
+          {/* The compound unit, spelled out: per SMS · per delivered parcel */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-2xl font-extrabold text-white lg:text-[1.9rem]">
+            <span className="inline-flex items-center gap-2.5">
+              <MessageSquare className="h-7 w-7 text-white/90" />
+              <T en="per SMS" ar="لكل رسالة" />
+            </span>
+            <span className="text-3xl font-black text-white/45">·</span>
+            <span className="inline-flex items-center gap-2.5">
+              <PackageCheck className="h-7 w-7 text-white/90" />
               <T en="per delivered parcel" ar="لكل طرد مُسلَّم" />
             </span>
           </div>
         </div>
       </div>
 
-      {/* The SMS you can automate — each one is 10 DA, only when delivered */}
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {smsTypes.map((s, i) => (
-          <span
-            key={i}
-            className="animate-fade-in-up inline-flex items-center gap-2.5 rounded-2xl border border-ink/10 bg-ink/[0.03] px-5 py-2.5 text-lg font-semibold text-ink/75"
-            style={{ animationDelay: `${0.15 + i * 0.1}s` }}
-          >
-            <s.icon className="h-5 w-5 text-accent-ink" />
-            <T en={s.en} ar={s.ar} />
-          </span>
-        ))}
-      </div>
+      {/* The kicker — the reason the price is a deal */}
+      <p className="flex items-center gap-3 text-3xl font-extrabold text-ink lg:text-4xl">
+        <ShieldCheck className="h-9 w-9 flex-shrink-0 text-accent-ink" />
+        <T en="No delivery? You pay nothing." ar="لا تسليم؟ لا تدفع شيئًا." />
+      </p>
 
       {/* Reassurance row */}
       <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-xl font-semibold text-ink/55">
